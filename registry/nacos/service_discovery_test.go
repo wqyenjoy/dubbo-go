@@ -73,10 +73,9 @@ func TestWeight_RegisterParam(t *testing.T) {
 
 /* 2️⃣ Subscription side: convertInstances writes Weight back to the instance and injects it into the URL */
 
-// NOSONAR
 func fakeInstance(w float64) model.Instance {
 	return model.Instance{
-		Ip:     "192.181.10.1",
+		Ip:     "192.181.10.1", //NOSONAR
 		Port:   20000,
 		Weight: w,
 		Metadata: map[string]string{
