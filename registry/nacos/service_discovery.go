@@ -19,29 +19,26 @@ package nacos
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"sync"
-)
 
-import (
 	gxset "github.com/dubbogo/gost/container/set"
+
 	nacosClient "github.com/dubbogo/gost/database/kv/nacos"
+
 	gxpage "github.com/dubbogo/gost/hash/page"
 	"github.com/dubbogo/gost/log/logger"
-
 	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/registry"
 	"dubbo.apache.org/dubbo-go/v3/remoting/nacos"
+	perrors "github.com/pkg/errors"
 )
 
 const (
@@ -187,7 +184,7 @@ func (n *nacosServiceDiscovery) GetInstances(serviceName string) []registry.Serv
 			ServiceName: serviceName,
 			Host:        ins.Ip,
 			Port:        int(ins.Port),
-			Weight:      int64(ins.Weight),
+			Weight:      int64(math.Round(ins.Weight)),
 			Enable:      ins.Enable,
 			Healthy:     ins.Healthy,
 			Metadata:    metadata,
@@ -289,7 +286,7 @@ func (n *nacosServiceDiscovery) AddListener(listener registry.ServiceInstancesCh
 						ServiceName: serviceName,
 						Host:        service.Ip,
 						Port:        int(service.Port),
-						Weight:      int64(service.Weight),
+						Weight:      int64(math.Round(service.Weight)),
 						Enable:      service.Enable,
 						Healthy:     true,
 						Metadata:    metadata,
@@ -433,7 +430,7 @@ func (n *nacosServiceDiscovery) convertInstances(instances []model.Instance) []r
 			ServiceName: "test-service", // 测试用的服务名
 			Host:        ins.Ip,
 			Port:        int(ins.Port),
-			Weight:      int64(ins.Weight), // 确保权重传递
+			Weight:      int64(math.Round(ins.Weight)), // 确保权重传递
 			Enable:      ins.Enable,
 			Healthy:     ins.Healthy,
 			Metadata:    metadata,

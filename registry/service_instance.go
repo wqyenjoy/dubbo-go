@@ -21,17 +21,13 @@ import (
 	"encoding/json"
 	url2 "net/url"
 	"strconv"
-)
 
-import (
 	"github.com/dubbogo/gost/log/logger"
-	gxsort "github.com/dubbogo/gost/sort"
-)
 
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/metadata/info"
+	gxsort "github.com/dubbogo/gost/sort"
 )
 
 // ServiceInstance is the interface  which is used for service registration and discovery.
@@ -77,7 +73,7 @@ type ServiceInstance interface {
 	// GetTag will return the tag of the instance
 	GetTag() string
 
-	// GetWeight will return the weight of the instance；if ≤0 时由调用方兜底成 DefaultWeight
+	// GetWeight will return the weight of the instance; if ≤0, the caller should use DefaultWeight as fallback
 	GetWeight() int64
 }
 
@@ -162,6 +158,13 @@ func (d *DefaultServiceInstance) GetTag() string {
 	return d.Tag
 }
 
+// injectWeight adds weight parameter to URL if weight is greater than 0
+func (d *DefaultServiceInstance) injectWeight(url *common.URL, weight int64) {
+	if weight > 0 {
+		url.AddParam(constant.WeightKey, strconv.FormatInt(weight, 10))
+	}
+}
+
 // ToURLs return a list of url.
 func (d *DefaultServiceInstance) ToURLs(service *info.ServiceInfo) []*common.URL {
 	urls := make([]*common.URL, 0, 8)
@@ -180,9 +183,7 @@ func (d *DefaultServiceInstance) ToURLs(service *info.ServiceInfo) []*common.URL
 					common.WithPath(service.Name), common.WithInterface(service.Name),
 					common.WithMethods(service.GetMethods()), common.WithParams(service.GetParams()),
 					common.WithParams(url2.Values{constant.Tagkey: {d.Tag}}))
-				if d.GetWeight() > 0 {
-					url.AddParam(constant.WeightKey, strconv.FormatInt(d.GetWeight(), 10))
-				}
+				d.injectWeight(url, d.GetWeight())
 				urls = append(urls, url)
 			}
 		}
@@ -192,9 +193,7 @@ func (d *DefaultServiceInstance) ToURLs(service *info.ServiceInfo) []*common.URL
 			common.WithPath(service.Name), common.WithInterface(service.Name),
 			common.WithMethods(service.GetMethods()), common.WithParams(service.GetParams()),
 			common.WithParams(url2.Values{constant.Tagkey: {d.Tag}}))
-		if d.Weight > 0 {
-			url.AddParam(constant.WeightKey, strconv.FormatInt(d.Weight, 10))
-		}
+		d.injectWeight(url, d.GetWeight())
 		urls = append(urls, url)
 	}
 	return urls
@@ -251,7 +250,7 @@ type ServiceInstanceCustomizer interface {
 
 func (d *DefaultServiceInstance) GetWeight() int64 {
 	if d.Weight <= 0 {
-		return constant.DefaultWeight // 默认 100
+		return constant.DefaultWeight
 	}
 	return d.Weight
 }
