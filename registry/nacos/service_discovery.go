@@ -427,10 +427,10 @@ func (n *nacosServiceDiscovery) convertInstances(instances []model.Instance) []r
 
 		res = append(res, &registry.DefaultServiceInstance{
 			ID:          id,
-			ServiceName: "test-service", // 测试用的服务名
+			ServiceName: "test-service", // service name for test
 			Host:        ins.Ip,
 			Port:        int(ins.Port),
-			Weight:      int64(math.Round(ins.Weight)), // 确保权重传递
+			Weight:      int64(math.Round(ins.Weight)), // Ensure weight is correctly passed (for test)
 			Enable:      ins.Enable,
 			Healthy:     ins.Healthy,
 			Metadata:    metadata,
