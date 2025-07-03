@@ -330,6 +330,8 @@ func (n *nacosServiceDiscovery) toRegisterInstance(instance registry.ServiceInst
 	if urlW := n.registryURL.GetParam(constant.RegistryKey+"."+constant.WeightKey, ""); urlW != "" {
 		if f, err := strconv.ParseFloat(urlW, 64); err == nil {
 			w = int64(f)
+		} else {
+			logger.Warnf("Invalid weight override value '%s': %v. Using default weight.", urlW, err)
 		}
 	}
 
