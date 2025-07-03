@@ -180,8 +180,8 @@ func (d *DefaultServiceInstance) ToURLs(service *info.ServiceInfo) []*common.URL
 					common.WithPath(service.Name), common.WithInterface(service.Name),
 					common.WithMethods(service.GetMethods()), common.WithParams(service.GetParams()),
 					common.WithParams(url2.Values{constant.Tagkey: {d.Tag}}))
-				if d.Weight > 0 {
-					url.AddParam(constant.WeightKey, strconv.FormatInt(d.Weight, 10))
+				if d.GetWeight() > 0 {
+					url.AddParam(constant.WeightKey, strconv.FormatInt(d.GetWeight(), 10))
 				}
 				urls = append(urls, url)
 			}
