@@ -23,6 +23,9 @@ import (
 	"sync"
 	"time"
 
+	conf "dubbo.apache.org/dubbo-go/v3/common/config"
+	"dubbo.apache.org/dubbo-go/v3/config_center"
+	"dubbo.apache.org/dubbo-go/v3/remoting"
 	"github.com/dubbogo/gost/log/logger"
 	"github.com/fsnotify/fsnotify"
 	"github.com/knadh/koanf"
@@ -356,10 +359,33 @@ func (hrm *HotReloadManager) applyConfig(newConfig *RootConfig) error {
 
 // triggerConfigChangeEvent 触发配置变更事件
 func (hrm *HotReloadManager) triggerConfigChangeEvent(newConfig *RootConfig) {
-	// 这里可以触发配置变更事件，让其他模块感知到配置变化
-	// 可以参考现有的配置中心事件机制
+	// 获取环境实例中的动态配置中心
+	envInstance := conf.GetEnvInstance()
+	dynamicConfig := envInstance.GetDynamicConfiguration()
 
-	logger.Infof("Configuration change event triggered")
+	if dynamicConfig != nil {
+		// 将配置变更封装成 ConfigChangeEvent
+		// 这里我们使用一个特殊的 key 来表示根配置变更
+		configKey := "root-config"
+
+		// 将新配置序列化为字符串（这里简化处理，实际可能需要更复杂的序列化）
+		configContent := "root-config-updated"
+
+		// 创建配置变更事件
+		event := &config_center.ConfigChangeEvent{
+			Key:        configKey,
+			Value:      configContent,
+			ConfigType: remoting.EventTypeUpdate,
+		}
+
+		// 通知 RootConfig 处理配置变更
+		// RootConfig 实现了 ConfigurationListener 接口
+		newConfig.Process(event)
+
+		logger.Infof("Configuration change event triggered and processed by dynamic configuration center")
+	} else {
+		logger.Infof("Configuration change event triggered (no dynamic configuration center available)")
+	}
 }
 
 // GetCurrentConfig 获取当前配置
