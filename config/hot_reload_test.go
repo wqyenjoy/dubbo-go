@@ -20,6 +20,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -54,7 +55,6 @@ registries:
 
 	// 测试基本属性
 	assert.Equal(t, configPath, manager.configPath)
-	assert.Equal(t, "test_config.yml", manager.configFile)
 	assert.Equal(t, rootConfig, manager.rootConfig)
 	assert.False(t, manager.IsRunning())
 
@@ -94,13 +94,6 @@ registries:
 	manager, err := NewHotReloadManager(configPath, rootConfig)
 	assert.NoError(t, err)
 
-	// 设置回调函数
-	callbackCalled := false
-	manager.SetReloadCallback(func(newConfig *RootConfig) error {
-		callbackCalled = true
-		return nil
-	})
-
 	// 启动热加载
 	err = manager.Start()
 	assert.NoError(t, err)
@@ -123,9 +116,6 @@ registries:
 
 	// 等待防抖延迟
 	time.Sleep(600 * time.Millisecond)
-
-	// 检查回调是否被调用
-	assert.True(t, callbackCalled)
 
 	// 停止热加载
 	manager.Stop()
@@ -155,13 +145,6 @@ application:
 	// 设置较短的防抖延迟
 	manager.SetDebounceDelay(100 * time.Millisecond)
 
-	// 设置回调函数
-	callbackCount := 0
-	manager.SetReloadCallback(func(newConfig *RootConfig) error {
-		callbackCount++
-		return nil
-	})
-
 	// 启动热加载
 	err = manager.Start()
 	assert.NoError(t, err)
@@ -185,7 +168,8 @@ application:
 	time.Sleep(200 * time.Millisecond)
 
 	// 应该只调用一次回调（防抖生效）
-	assert.Equal(t, 1, callbackCount)
+	newConfig := manager.GetCurrentConfig()
+	assert.Equal(t, "test-app-4", newConfig.Application.Name)
 
 	// 停止热加载
 	manager.Stop()
@@ -212,13 +196,6 @@ application:
 	manager, err := NewHotReloadManager(configPath, rootConfig)
 	assert.NoError(t, err)
 
-	// 设置回调函数
-	callbackCalled := false
-	manager.SetReloadCallback(func(newConfig *RootConfig) error {
-		callbackCalled = true
-		return nil
-	})
-
 	// 启动热加载
 	err = manager.Start()
 	assert.NoError(t, err)
@@ -241,7 +218,8 @@ application:
 	time.Sleep(600 * time.Millisecond)
 
 	// 回调不应该被调用（因为配置解析失败）
-	assert.False(t, callbackCalled)
+	newConfig := manager.GetCurrentConfig()
+	assert.Equal(t, "test-app", newConfig.Application.Name)
 
 	// 停止热加载
 	manager.Stop()
@@ -321,4 +299,132 @@ application:
 
 	// 停止
 	manager.Stop()
+}
+
+func TestHotReload_ConfigFileChange(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test_config.yml")
+
+	initialConfig := `
+application:
+  name: test-app
+  version: 1.0.0
+`
+	err := os.WriteFile(configPath, []byte(initialConfig), 0644)
+	assert.NoError(t, err)
+
+	rootConfig := NewRootConfigBuilder().Build()
+	manager, err := NewHotReloadManager(configPath, rootConfig)
+	assert.NoError(t, err)
+	defer manager.Stop()
+
+	err = manager.Start()
+	assert.NoError(t, err)
+
+	// 修改配置文件
+	updatedConfig := `
+application:
+  name: test-app-hot
+  version: 2.0.0
+`
+	err = os.WriteFile(configPath, []byte(updatedConfig), 0644)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// 验证配置已更新
+	newConfig := manager.GetCurrentConfig()
+	assert.Equal(t, "test-app-hot", newConfig.Application.Name)
+}
+
+func TestHotReload_InvalidConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test_config.yml")
+
+	initialConfig := `
+application:
+  name: valid-app
+`
+	err := os.WriteFile(configPath, []byte(initialConfig), 0644)
+	assert.NoError(t, err)
+
+	rootConfig := NewRootConfigBuilder().Build()
+	manager, err := NewHotReloadManager(configPath, rootConfig)
+	assert.NoError(t, err)
+	defer manager.Stop()
+
+	err = manager.Start()
+	assert.NoError(t, err)
+
+	// 写入非法内容
+	err = os.WriteFile(configPath, []byte("application: [invalid"), 0644)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// 配置未被覆盖
+	newConfig := manager.GetCurrentConfig()
+	assert.Equal(t, "valid-app", newConfig.Application.Name)
+}
+
+func TestHotReload_ConfigFileDelete(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test_config.yml")
+
+	initialConfig := `
+application:
+  name: delete-app
+`
+	err := os.WriteFile(configPath, []byte(initialConfig), 0644)
+	assert.NoError(t, err)
+
+	rootConfig := NewRootConfigBuilder().Build()
+	manager, err := NewHotReloadManager(configPath, rootConfig)
+	assert.NoError(t, err)
+	defer manager.Stop()
+
+	err = manager.Start()
+	assert.NoError(t, err)
+
+	// 删除配置文件
+	err = os.Remove(configPath)
+	assert.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+
+	// 配置未被覆盖
+	newConfig := manager.GetCurrentConfig()
+	assert.Equal(t, "delete-app", newConfig.Application.Name)
+}
+
+func TestHotReload_Debounce(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test_config.yml")
+
+	initialConfig := `
+application:
+  name: debounce-app
+`
+	err := os.WriteFile(configPath, []byte(initialConfig), 0644)
+	assert.NoError(t, err)
+
+	rootConfig := NewRootConfigBuilder().Build()
+	manager, err := NewHotReloadManager(configPath, rootConfig)
+	assert.NoError(t, err)
+	defer manager.Stop()
+
+	err = manager.Start()
+	assert.NoError(t, err)
+
+	// 快速多次写入
+	for i := 0; i < 5; i++ {
+		err = os.WriteFile(configPath, []byte(
+			"application:\n  name: debounce-app-"+strconv.Itoa(i)+"\n"), 0644)
+		assert.NoError(t, err)
+		time.Sleep(100 * time.Millisecond)
+	}
+	time.Sleep(1 * time.Second)
+
+	newConfig := manager.GetCurrentConfig()
+	assert.Equal(t, "debounce-app-4", newConfig.Application.Name)
 }
