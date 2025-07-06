@@ -20,14 +20,9 @@ package config
 import (
 	"strings"
 	"testing"
-)
 
-import (
-	"github.com/stretchr/testify/assert"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant/file"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCheckGenre(t *testing.T) {
@@ -43,13 +38,19 @@ func TestCheckGenre(t *testing.T) {
 }
 
 func TestFileGenre(t *testing.T) {
-	conf := NewLoaderConf(WithPath("../config/testdata/config/properties/application.properties"))
+	conf, err := NewLoaderConf(WithPath("../config/testdata/config/properties/application.properties"))
+	if err != nil {
+		t.Fatalf("Failed to create loader config: %v", err)
+	}
 	assert.Equal(t, conf.suffix, "properties")
 }
 
 func TestRootConfig(t *testing.T) {
 	rc := NewRootConfigBuilder().SetApplication(NewApplicationConfigBuilder().SetName("test-app").Build()).Build()
-	conf := NewLoaderConf(WithRootConfig(rc))
+	conf, err := NewLoaderConf(WithRootConfig(rc))
+	if err != nil {
+		t.Fatalf("Failed to create loader config: %v", err)
+	}
 	assert.Equal(t, conf.rc.Application.Name, "test-app")
 }
 
@@ -58,17 +59,23 @@ func TestNewLoaderConf_WithBytes(t *testing.T) {
 dubbo.application.module=local
 dubbo.services.HelloService.registry=nacos,zk`
 
-	conf := NewLoaderConf(WithBytes([]byte(str)), WithGenre("properties"))
+	conf, err := NewLoaderConf(WithBytes([]byte(str)), WithGenre("properties"))
+	if err != nil {
+		t.Fatalf("Failed to create loader config: %v", err)
+	}
 
 	assert.NotNil(t, conf)
 	assert.NotNil(t, conf.bytes)
 }
 
 func TestNewLoaderConf_WithSuffix(t *testing.T) {
-	conf := NewLoaderConf(
+	conf, err := NewLoaderConf(
 		WithSuffix(file.JSON),
 		WithPath("../config/testdata/config/properties/application.properties"),
 	)
+	if err != nil {
+		t.Fatalf("Failed to create loader config: %v", err)
+	}
 
 	assert.Equal(t, conf.suffix, string(file.PROPERTIES))
 }
@@ -92,10 +99,13 @@ func TestResolverFilePath_Illegal_Path_Name(t *testing.T) {
 }
 
 func Test_getActiveFilePath(t *testing.T) {
-	conf := NewLoaderConf(
+	conf, err := NewLoaderConf(
 		WithSuffix(file.JSON),
 		WithPath("../config/testdata/config/properties/application.properties"),
 	)
+	if err != nil {
+		t.Fatalf("Failed to create loader config: %v", err)
+	}
 
 	filePath := conf.getActiveFilePath("dev")
 

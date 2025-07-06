@@ -20,25 +20,19 @@ package config
 import (
 	"net/url"
 	"strings"
-)
 
-import (
-	"github.com/creasty/defaults"
-
-	"github.com/dubbogo/gost/log/logger"
-
-	"github.com/knadh/koanf"
-
-	"github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
+	"github.com/creasty/defaults"
+	"github.com/dubbogo/gost/log/logger"
+	"github.com/knadh/koanf"
+	"github.com/pkg/errors"
+
 	conf "dubbo.apache.org/dubbo-go/v3/common/config"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/config_center"
 	"dubbo.apache.org/dubbo-go/v3/metrics"
+
 	metricsConfigCenter "dubbo.apache.org/dubbo-go/v3/metrics/config_center"
 	"dubbo.apache.org/dubbo-go/v3/remoting"
 )
@@ -155,7 +149,11 @@ func startConfigCenter(rc *RootConfig) error {
 			"Please check if your config-center config is correct.", cc)
 		return nil
 	}
-	config := NewLoaderConf(WithDelim("."), WithGenre(cc.FileExtension), WithBytes([]byte(strConf)))
+	config, err := NewLoaderConf(WithDelim("."), WithGenre(cc.FileExtension), WithBytes([]byte(strConf)))
+	if err != nil {
+		logger.Errorf("[Config Center] Failed to create loader config: %v", err)
+		return err
+	}
 	koan := GetConfigResolver(config)
 	if err = koan.UnmarshalWithConf(rc.Prefix(), rc, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
 		return err

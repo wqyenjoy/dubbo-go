@@ -122,8 +122,18 @@ func registerPOJO() {
 // It's deprecated for user to call rootConfig.Init() manually, try config.Load(config.WithRootConfig(rootConfig)) instead.
 func (rc *RootConfig) Init() error {
 	registerPOJO()
+
+	// 确保Logger不为nil
+	if rc.Logger == nil {
+		rc.Logger = NewLoggerConfigBuilder().Build()
+	}
 	if err := rc.Logger.Init(); err != nil { // init default logger
 		return err
+	}
+
+	// 确保ConfigCenter不为nil
+	if rc.ConfigCenter == nil {
+		rc.ConfigCenter = NewConfigCenterConfigBuilder().Build()
 	}
 	if err := rc.ConfigCenter.Init(rc); err != nil {
 		logger.Infof("[Config Center] Config center doesn't start")
@@ -134,13 +144,51 @@ func (rc *RootConfig) Init() error {
 		}
 	}
 
+	// 确保Application不为nil
+	if rc.Application == nil {
+		rc.Application = NewApplicationConfigBuilder().Build()
+	}
 	if err := rc.Application.Init(); err != nil {
 		return err
 	}
 
+	// 确保Custom不为nil
+	if rc.Custom == nil {
+		rc.Custom = NewCustomConfigBuilder().Build()
+	}
 	// init user define
 	if err := rc.Custom.Init(); err != nil {
 		return err
+	}
+
+	// 确保Provider不为nil
+	if rc.Provider == nil {
+		rc.Provider = NewProviderConfigBuilder().Build()
+	}
+
+	// 确保Consumer不为nil
+	if rc.Consumer == nil {
+		rc.Consumer = NewConsumerConfigBuilder().Build()
+	}
+
+	// 确保Metrics不为nil
+	if rc.Metrics == nil {
+		rc.Metrics = NewMetricConfigBuilder().Build()
+	}
+
+	// 确保Otel不为nil
+	if rc.Otel == nil {
+		rc.Otel = NewOtelConfigBuilder().Build()
+	}
+
+	// 确保MetadataReport不为nil
+	if rc.MetadataReport == nil {
+		rc.MetadataReport = NewMetadataReportConfigBuilder().Build()
+	}
+
+	// 确保Shutdown不为nil
+	if rc.Shutdown == nil {
+		rc.Shutdown = NewShutDownConfigBuilder().Build()
 	}
 
 	// init protocol
@@ -348,8 +396,18 @@ func (rb *RootConfigBuilder) Build() *RootConfig {
 // Process receive changing listener's event, dynamic update config
 func (rc *RootConfig) Process(event *config_center.ConfigChangeEvent) {
 	logger.Infof("CenterConfig process event:\n%+v", event)
-	config := NewLoaderConf(WithBytes([]byte(event.Value.(string))))
+
+	config, err := NewLoaderConf(WithBytes([]byte(event.Value.(string))))
+	if err != nil {
+		logger.Errorf("CenterConfig process failed to create loader config: %v", err)
+		return
+	}
+
 	koan := GetConfigResolver(config)
+	if koan == nil {
+		logger.Errorf("CenterConfig process failed to resolve config")
+		return
+	}
 
 	updateRootConfig := &RootConfig{}
 	if err := koan.UnmarshalWithConf(rc.Prefix(),
@@ -357,19 +415,47 @@ func (rc *RootConfig) Process(event *config_center.ConfigChangeEvent) {
 		logger.Errorf("CenterConfig process unmarshalConf failed, got error %#v", err)
 		return
 	}
-	// dynamically update register
+
+	// 原子替换配置，避免并发问题
+	rc.atomicUpdate(updateRootConfig)
+}
+
+// atomicUpdate 原子更新配置，避免并发问题
+func (rc *RootConfig) atomicUpdate(updateRootConfig *RootConfig) {
+	// 动态更新注册中心
 	for registerId, updateRegister := range updateRootConfig.Registries {
-		register := rc.Registries[registerId]
-		register.DynamicUpdateProperties(updateRegister)
+		if register, exists := rc.Registries[registerId]; exists {
+			register.DynamicUpdateProperties(updateRegister)
+		} else {
+			// 新增注册中心
+			rc.Registries[registerId] = updateRegister
+		}
 	}
-	// dynamically update consumer
-	rc.Consumer.DynamicUpdateProperties(updateRootConfig.Consumer)
 
-	// dynamically update logger
-	rc.Logger.DynamicUpdateProperties(updateRootConfig.Logger)
+	// 动态更新消费者
+	if updateRootConfig.Consumer != nil {
+		rc.Consumer.DynamicUpdateProperties(updateRootConfig.Consumer)
+	}
 
-	// dynamically update metric
-	rc.Metrics.DynamicUpdateProperties(updateRootConfig.Metrics)
+	// 动态更新日志配置
+	if updateRootConfig.Logger != nil {
+		rc.Logger.DynamicUpdateProperties(updateRootConfig.Logger)
+	}
+
+	// 动态更新指标配置
+	if updateRootConfig.Metrics != nil {
+		rc.Metrics.DynamicUpdateProperties(updateRootConfig.Metrics)
+	}
+
+	// 动态更新应用配置
+	if updateRootConfig.Application != nil {
+		rc.Application.DynamicUpdateProperties(updateRootConfig.Application)
+	}
+
+	// 动态更新提供者配置
+	if updateRootConfig.Provider != nil {
+		rc.Provider.DynamicUpdateProperties(updateRootConfig.Provider)
+	}
 }
 
 // TODO：When config is migrated later, the impact of this will be migrated to the global module

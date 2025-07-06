@@ -19,17 +19,17 @@ package config
 
 import (
 	"testing"
-)
 
-import (
 	"github.com/knadh/koanf"
-
 	"github.com/stretchr/testify/assert"
 )
 
 func TestResolvePlaceHolder(t *testing.T) {
 	t.Run("test resolver", func(t *testing.T) {
-		conf := NewLoaderConf(WithPath("./testdata/config/resolver/application.yaml"))
+		conf, err := NewLoaderConf(WithPath("./testdata/config/resolver/application.yaml"))
+		if err != nil {
+			t.Fatalf("Failed to create loader config: %v", err)
+		}
 		koan := GetConfigResolver(conf)
 		assert.Equal(t, koan.Get("dubbo.config-center.address"), koan.Get("dubbo.registries.nacos.address"))
 		assert.Equal(t, koan.Get("localhost"), koan.Get("dubbo.protocols.dubbo.ip"))
@@ -37,7 +37,7 @@ func TestResolvePlaceHolder(t *testing.T) {
 		assert.Equal(t, "dev", koan.Get("dubbo.registries.zk.group"))
 
 		rc := NewRootConfigBuilder().Build()
-		err := koan.UnmarshalWithConf(rc.Prefix(), rc, koanf.UnmarshalConf{Tag: "yaml"})
+		err = koan.UnmarshalWithConf(rc.Prefix(), rc, koanf.UnmarshalConf{Tag: "yaml"})
 		assert.Nil(t, err)
 		assert.Equal(t, rc.ConfigCenter.Address, rc.Registries["nacos"].Address)
 		//not exist, default

@@ -26,24 +26,17 @@ import (
 	"strings"
 	"sync"
 	"time"
-)
 
-import (
 	"github.com/creasty/defaults"
-
 	"github.com/dubbogo/gost/log/logger"
 
-	perrors "github.com/pkg/errors"
-
-	"go.uber.org/atomic"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/protocolwrapper"
+	perrors "github.com/pkg/errors"
+	"go.uber.org/atomic"
 )
 
 // ServiceConfig is the configuration of the service provider
@@ -600,4 +593,78 @@ func (pcb *ServiceConfigBuilder) SetNotRegister(notRegister bool) *ServiceConfig
 
 func (pcb *ServiceConfigBuilder) Build() *ServiceConfig {
 	return pcb.serviceConfig
+}
+
+// DynamicUpdateProperties 动态更新服务配置属性
+func (s *ServiceConfig) DynamicUpdateProperties(n *ServiceConfig) {
+	if n == nil {
+		return
+	}
+
+	// 使用ApplyConfigUpdate函数进行安全更新
+	ApplyConfigUpdate(&s.Filter, n.Filter)
+	ApplyConfigUpdate(&s.Interface, n.Interface)
+	ApplyConfigUpdate(&s.Cluster, n.Cluster)
+	ApplyConfigUpdate(&s.Loadbalance, n.Loadbalance)
+	ApplyConfigUpdate(&s.Group, n.Group)
+	ApplyConfigUpdate(&s.Version, n.Version)
+	ApplyConfigUpdate(&s.Warmup, n.Warmup)
+	ApplyConfigUpdate(&s.Retries, n.Retries)
+	ApplyConfigUpdate(&s.Serialization, n.Serialization)
+	ApplyConfigUpdate(&s.Token, n.Token)
+	ApplyConfigUpdate(&s.AccessLog, n.AccessLog)
+	ApplyConfigUpdate(&s.TpsLimiter, n.TpsLimiter)
+	ApplyConfigUpdate(&s.TpsLimitInterval, n.TpsLimitInterval)
+	ApplyConfigUpdate(&s.TpsLimitRate, n.TpsLimitRate)
+	ApplyConfigUpdate(&s.TpsLimitStrategy, n.TpsLimitStrategy)
+	ApplyConfigUpdate(&s.TpsLimitRejectedHandler, n.TpsLimitRejectedHandler)
+	ApplyConfigUpdate(&s.ExecuteLimit, n.ExecuteLimit)
+	ApplyConfigUpdate(&s.ExecuteLimitRejectedHandler, n.ExecuteLimitRejectedHandler)
+	ApplyConfigUpdate(&s.Auth, n.Auth)
+	ApplyConfigUpdate(&s.NotRegister, n.NotRegister)
+	ApplyConfigUpdate(&s.ParamSign, n.ParamSign)
+	ApplyConfigUpdate(&s.Tag, n.Tag)
+	ApplyConfigUpdate(&s.TracingKey, n.TracingKey)
+
+	// 更新RegistryIDs
+	if len(n.RegistryIDs) > 0 {
+		s.RegistryIDs = n.RegistryIDs
+	}
+
+	// 更新ProtocolIDs
+	if len(n.ProtocolIDs) > 0 {
+		s.ProtocolIDs = n.ProtocolIDs
+	}
+
+	// 更新Params
+	if len(n.Params) > 0 {
+		if s.Params == nil {
+			s.Params = make(map[string]string)
+		}
+		for k, v := range n.Params {
+			s.Params[k] = v
+		}
+	}
+
+	// 更新Methods - 支持新增和修改，但不删除现有方法
+	if len(n.Methods) > 0 {
+		if s.Methods == nil {
+			s.Methods = make([]*MethodConfig, 0)
+		}
+		// 创建方法映射以便快速查找
+		methodMap := make(map[string]*MethodConfig)
+		for _, method := range s.Methods {
+			methodMap[method.Name] = method
+		}
+
+		for _, newMethod := range n.Methods {
+			if existingMethod, exists := methodMap[newMethod.Name]; exists {
+				// 更新现有方法配置
+				existingMethod.DynamicUpdateProperties(newMethod)
+			} else {
+				// 新增方法配置
+				s.Methods = append(s.Methods, newMethod)
+			}
+		}
+	}
 }

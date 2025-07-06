@@ -20,22 +20,18 @@ package config
 import (
 	"strings"
 	"testing"
-)
 
-import (
-	"github.com/stretchr/testify/assert"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
+	"github.com/stretchr/testify/assert"
+
 	_ "dubbo.apache.org/dubbo-go/v3/metadata/report/zookeeper"
 )
 
 func TestCustomInit(t *testing.T) {
 	t.Run("empty use default", func(t *testing.T) {
-		err := Load(WithPath("./testdata/config/custom/empty.yaml"))
+		rc, err := Load(WithPath("./testdata/config/custom/empty.yaml"))
 		assert.Nil(t, err)
-		assert.NotNil(t, rootConfig)
+		assert.NotNil(t, rc)
 		customConfig := rootConfig.Custom
 		assert.NotNil(t, customConfig)
 		assert.Equal(t, customConfig.ConfigMap, map[string]any(nil))
@@ -44,9 +40,9 @@ func TestCustomInit(t *testing.T) {
 	})
 
 	t.Run("use config", func(t *testing.T) {
-		err := Load(WithPath("./testdata/config/custom/custom.yaml"))
+		rc, err := Load(WithPath("./testdata/config/custom/custom.yaml"))
 		assert.Nil(t, err)
-		assert.NotNil(t, rootConfig)
+		assert.NotNil(t, rc)
 		customConfig := rootConfig.Custom
 		assert.NotNil(t, customConfig)
 		assert.Equal(t, customConfig.ConfigMap, map[string]any{"test-config": true})

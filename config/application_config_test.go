@@ -19,21 +19,18 @@ package config
 
 import (
 	"testing"
-)
 
-import (
-	"github.com/stretchr/testify/assert"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
+	"github.com/stretchr/testify/assert"
+
 	_ "dubbo.apache.org/dubbo-go/v3/metadata/report/nacos"
 )
 
 func TestApplicationConfig(t *testing.T) {
 
-	err := Load(WithPath("./testdata/config/application/application.yaml"))
+	rc, err := Load(WithPath("./testdata/config/application/application.yaml"))
 	assert.Nil(t, err)
+	assert.NotNil(t, rc)
 
 	center := rootConfig.Registries
 	assert.NotNil(t, center)

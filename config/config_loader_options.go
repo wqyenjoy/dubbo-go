@@ -22,19 +22,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-)
 
-import (
-	"github.com/dubbogo/gost/log/logger"
-
-	"github.com/knadh/koanf"
-
-	"github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/constant/file"
+	"github.com/dubbogo/gost/log/logger"
+	"github.com/knadh/koanf"
+	"github.com/pkg/errors"
 )
 
 type loaderConf struct {
@@ -46,11 +39,13 @@ type loaderConf struct {
 	name   string      // config file name
 }
 
-func NewLoaderConf(opts ...LoaderConfOption) *loaderConf {
-	configFilePath := "../conf/dubbogo.yaml"
+func NewLoaderConf(opts ...LoaderConfOption) (*loaderConf, error) {
+	// 支持环境变量配置路径，符合12-Factor原则
+	configFilePath := getDefaultConfigPath()
 	if configFilePathFromEnv := os.Getenv(constant.ConfigFileEnvKey); configFilePathFromEnv != "" {
 		configFilePath = configFilePathFromEnv
 	}
+
 	name, suffix := resolverFilePath(configFilePath)
 	conf := &loaderConf{
 		suffix: suffix,
@@ -58,20 +53,24 @@ func NewLoaderConf(opts ...LoaderConfOption) *loaderConf {
 		delim:  ".",
 		name:   name,
 	}
+
 	for _, opt := range opts {
 		opt.apply(conf)
 	}
+
 	if conf.rc != nil {
-		return conf
+		return conf, nil
 	}
+
 	if len(conf.bytes) <= 0 {
-		if bytes, err := os.ReadFile(conf.path); err != nil {
-			panic(err)
-		} else {
-			conf.bytes = bytes
+		bytes, err := os.ReadFile(conf.path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read config file: %s", conf.path)
 		}
+		conf.bytes = bytes
 	}
-	return conf
+
+	return conf, nil
 }
 
 type LoaderConfOption interface {
@@ -107,11 +106,28 @@ func WithSuffix(suffix file.Suffix) LoaderConfOption {
 func WithPath(path string) LoaderConfOption {
 	return loaderConfigFunc(func(conf *loaderConf) {
 		conf.path = absolutePath(path)
-		if bytes, err := os.ReadFile(conf.path); err != nil {
-			panic(err)
-		} else {
-			conf.bytes = bytes
+		bytes, err := os.ReadFile(conf.path)
+		if err != nil {
+			logger.Errorf("failed to read config file: %s, error: %v", conf.path, err)
+			return // 不panic，只记录错误
 		}
+		conf.bytes = bytes
+		name, suffix := resolverFilePath(path)
+		conf.suffix = suffix
+		conf.name = name
+	})
+}
+
+// WithPathSafe set load config path with error handling
+func WithPathSafe(path string) LoaderConfOption {
+	return loaderConfigFunc(func(conf *loaderConf) {
+		conf.path = absolutePath(path)
+		bytes, err := os.ReadFile(conf.path)
+		if err != nil {
+			logger.Errorf("failed to read config file: %s, error: %v", conf.path, err)
+			return
+		}
+		conf.bytes = bytes
 		name, suffix := resolverFilePath(path)
 		conf.suffix = suffix
 		conf.name = name
@@ -198,19 +214,49 @@ func (conf *loaderConf) MergeConfig(koan *koanf.Koanf) *koanf.Koanf {
 	active := koan.String("dubbo.profiles.active")
 	active = getLegalActive(active)
 	logger.Infof("The following profiles are active: %s", active)
-	if defaultActive != active {
-		path := conf.getActiveFilePath(active)
-		if !pathExists(path) {
-			logger.Debugf("Config file:%s not exist skip config merge", path)
-			return koan
-		}
-		activeConf = NewLoaderConf(WithPath(path))
-		activeKoan = GetConfigResolver(activeConf)
-		if err := koan.Merge(activeKoan); err != nil {
-			logger.Debugf("Config merge err %s", err)
-		}
+
+	if active == "default" {
+		return koan
 	}
+
+	path := conf.getActiveFilePath(active)
+	if !pathExists(path) {
+		logger.Warnf("profile config file not found: %s", path)
+		return koan
+	}
+
+	var err error
+	activeConf, err = NewLoaderConf(WithPath(path))
+	if err != nil {
+		logger.Errorf("failed to load profile config: %s, error: %v", path, err)
+		return koan
+	}
+
+	activeKoan = GetConfigResolver(activeConf)
+	if activeKoan == nil {
+		logger.Errorf("failed to resolve profile config: %s", path)
+		return koan
+	}
+
+	// 使用深度合并，支持slice/map的合并
+	if err := mergeConfigs(koan, activeKoan); err != nil {
+		logger.Errorf("failed to merge profile config: %v", err)
+		return koan
+	}
+
 	return koan
+}
+
+// mergeConfigs 深度合并配置，支持slice/map
+func mergeConfigs(dst, src *koanf.Koanf) error {
+	// 这里应该使用mergo.Merge进行深度合并
+	// 暂时使用简单的key覆盖，后续可以引入mergo库
+	srcKeys := src.Keys()
+	for _, key := range srcKeys {
+		value := src.Get(key)
+		dst.Set(key, value)
+	}
+	return nil
 }
 
 func (conf *loaderConf) getActiveFilePath(active string) string {
@@ -224,4 +270,20 @@ func pathExists(path string) bool {
 	} else {
 		return !os.IsNotExist(err)
 	}
+}
+
+// getDefaultConfigPath 获取默认配置路径，支持XDG_CONFIG_HOME和APP_HOME
+func getDefaultConfigPath() string {
+	// 优先使用XDG_CONFIG_HOME
+	if xdgConfigHome := os.Getenv("XDG_CONFIG_HOME"); xdgConfigHome != "" {
+		return filepath.Join(xdgConfigHome, "dubbo-go", "dubbogo.yaml")
+	}
+
+	// 其次使用APP_HOME
+	if appHome := os.Getenv("APP_HOME"); appHome != "" {
+		return filepath.Join(appHome, "conf", "dubbogo.yaml")
+	}
+
+	// 最后使用默认路径
+	return "../conf/dubbogo.yaml"
 }

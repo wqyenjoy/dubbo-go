@@ -19,16 +19,10 @@ package config
 
 import (
 	"strconv"
-)
 
-import (
-	"github.com/creasty/defaults"
-
-	"github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
+	"github.com/creasty/defaults"
+	"github.com/pkg/errors"
 )
 
 // ApplicationConfig is a configuration for current applicationConfig, whether the applicationConfig is a provider or a consumer
@@ -128,4 +122,24 @@ func (acb *ApplicationConfigBuilder) SetMetadataServiceProtocol(protocol string)
 
 func (acb *ApplicationConfigBuilder) Build() *ApplicationConfig {
 	return acb.application
+}
+
+// DynamicUpdateProperties 动态更新应用配置属性
+func (ac *ApplicationConfig) DynamicUpdateProperties(n *ApplicationConfig) {
+	if n == nil {
+		return
+	}
+
+	// 使用ApplyConfigUpdate函数进行安全更新
+	ApplyConfigUpdate(&ac.Organization, n.Organization)
+	ApplyConfigUpdate(&ac.Name, n.Name)
+	ApplyConfigUpdate(&ac.Module, n.Module)
+	ApplyConfigUpdate(&ac.Group, n.Group)
+	ApplyConfigUpdate(&ac.Version, n.Version)
+	ApplyConfigUpdate(&ac.Owner, n.Owner)
+	ApplyConfigUpdate(&ac.Environment, n.Environment)
+	ApplyConfigUpdate(&ac.MetadataType, n.MetadataType)
+	ApplyConfigUpdate(&ac.Tag, n.Tag)
+	ApplyConfigUpdate(&ac.MetadataServicePort, n.MetadataServicePort)
+	ApplyConfigUpdate(&ac.MetadataServiceProtocol, n.MetadataServiceProtocol)
 }

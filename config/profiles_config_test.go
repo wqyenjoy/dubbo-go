@@ -19,16 +19,10 @@ package config
 
 import (
 	"testing"
-)
 
-import (
-	"github.com/knadh/koanf"
-
-	"github.com/stretchr/testify/assert"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
+	"github.com/knadh/koanf"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestProfilesConfig_Prefix(t *testing.T) {
@@ -38,11 +32,14 @@ func TestProfilesConfig_Prefix(t *testing.T) {
 
 func TestLoaderConf_MergeConfig(t *testing.T) {
 	rc := NewRootConfigBuilder().Build()
-	conf := NewLoaderConf(WithPath("./testdata/config/active/application.yaml"))
+	conf, err := NewLoaderConf(WithPath("./testdata/config/active/application.yaml"))
+	if err != nil {
+		t.Fatalf("Failed to create loader config: %v", err)
+	}
 	koan := GetConfigResolver(conf)
 	koan = conf.MergeConfig(koan)
 
-	err := koan.UnmarshalWithConf(rc.Prefix(), rc, koanf.UnmarshalConf{Tag: "yaml"})
+	err = koan.UnmarshalWithConf(rc.Prefix(), rc, koanf.UnmarshalConf{Tag: "yaml"})
 	assert.Nil(t, err)
 
 	registries := rc.Registries

@@ -20,21 +20,16 @@ package config
 import (
 	"fmt"
 	"strings"
-)
 
-import (
 	"github.com/creasty/defaults"
-
 	"github.com/dubbogo/gost/log/logger"
 
 	tripleConstant "github.com/dubbogo/triple/pkg/common/constant"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
+	perrors "github.com/pkg/errors"
+
 	aslimiter "dubbo.apache.org/dubbo-go/v3/filter/adaptivesvc/limiter"
 )
 
@@ -276,4 +271,56 @@ func (pcb *ProviderConfigBuilder) SetRootConfig(rootConfig *RootConfig) *Provide
 
 func (pcb *ProviderConfigBuilder) Build() *ProviderConfig {
 	return pcb.providerConfig
+}
+
+// DynamicUpdateProperties 动态更新提供者配置属性
+func (c *ProviderConfig) DynamicUpdateProperties(n *ProviderConfig) {
+	if n == nil {
+		return
+	}
+
+	// 使用ApplyConfigUpdate函数进行安全更新
+	ApplyConfigUpdate(&c.Filter, n.Filter)
+	ApplyConfigUpdate(&c.Register, n.Register)
+	ApplyConfigUpdate(&c.TracingKey, n.TracingKey)
+	ApplyConfigUpdate(&c.ProxyFactory, n.ProxyFactory)
+	ApplyConfigUpdate(&c.FilterConf, n.FilterConf)
+	ApplyConfigUpdate(&c.AdaptiveService, n.AdaptiveService)
+	ApplyConfigUpdate(&c.AdaptiveServiceVerbose, n.AdaptiveServiceVerbose)
+
+	// 更新RegistryIDs
+	if len(n.RegistryIDs) > 0 {
+		c.RegistryIDs = n.RegistryIDs
+	}
+
+	// 更新ProtocolIDs
+	if len(n.ProtocolIDs) > 0 {
+		c.ProtocolIDs = n.ProtocolIDs
+	}
+
+	// 更新ConfigType
+	if len(n.ConfigType) > 0 {
+		if c.ConfigType == nil {
+			c.ConfigType = make(map[string]string)
+		}
+		for k, v := range n.ConfigType {
+			c.ConfigType[k] = v
+		}
+	}
+
+	// 更新Services - 支持新增和修改，但不删除现有服务
+	if len(n.Services) > 0 {
+		if c.Services == nil {
+			c.Services = make(map[string]*ServiceConfig)
+		}
+		for serviceID, serviceConfig := range n.Services {
+			if existingService, exists := c.Services[serviceID]; exists {
+				// 更新现有服务配置
+				existingService.DynamicUpdateProperties(serviceConfig)
+			} else {
+				// 新增服务配置
+				c.Services[serviceID] = serviceConfig
+			}
+		}
+	}
 }

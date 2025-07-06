@@ -18,12 +18,11 @@
 package config
 
 import (
-	"errors"
 	"os"
 
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"github.com/dubbogo/gost/log/logger"
-	"github.com/knadh/koanf"
+	"github.com/pkg/errors"
 
 	_ "dubbo.apache.org/dubbo-go/v3/logger/core/logrus"
 	"dubbo.apache.org/dubbo-go/v3/logger/core/zap"
@@ -39,27 +38,33 @@ func init() {
 	logger.SetLogger(log)
 }
 
-func Load(opts ...LoaderConfOption) error {
-	// conf
-	conf := NewLoaderConf(opts...)
-	if conf.rc == nil {
-		koan := GetConfigResolver(conf)
-		koan = conf.MergeConfig(koan)
-		currentRootConfig := GetAtomicRootConfig()
-		if err := koan.UnmarshalWithConf(currentRootConfig.Prefix(),
-			currentRootConfig, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
-			return err
-		}
-		SetAtomicRootConfig(currentRootConfig)
-	} else {
-		SetAtomicRootConfig(conf.rc)
+func Load(opts ...LoaderConfOption) (*RootConfig, error) {
+	conf, err := NewLoaderConf(opts...)
+	if err != nil {
+		return nil, err
 	}
 
-	currentRootConfig := GetAtomicRootConfig()
-	if err := currentRootConfig.Init(); err != nil {
-		return err
+	koan := GetConfigResolver(conf)
+	if koan == nil {
+		return nil, errors.New("failed to resolve config")
 	}
-	return nil
+
+	conf.MergeConfig(koan)
+
+	rc := &RootConfig{}
+	if err := koan.Unmarshal("", rc); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal config")
+	}
+
+	// 设置全局配置，保持向后兼容
+	SetAtomicRootConfig(rc)
+
+	// 初始化配置
+	if err := rc.Init(); err != nil {
+		return nil, err
+	}
+
+	return rc, nil
 }
 
 func check() error {
@@ -119,7 +124,16 @@ func IsProvider() bool {
 // LoadWithHotReload 加载配置并启用热加载功能
 func LoadWithHotReload(opts ...LoaderConfOption) error {
 	// 先正常加载配置
-	if err := Load(opts...); err != nil {
+	rc, err := Load(opts...)
+	if err != nil {
+		return err
+	}
+
+	// 设置全局配置
+	SetAtomicRootConfig(rc)
+
+	// 初始化配置
+	if err := rc.Init(); err != nil {
 		return err
 	}
 
@@ -130,7 +144,16 @@ func LoadWithHotReload(opts ...LoaderConfOption) error {
 // LoadWithHotReloadAndOptions 加载配置并启用热加载功能，支持热加载选项
 func LoadWithHotReloadAndOptions(loaderOpts []LoaderConfOption, hotReloadOpts ...HotReloadOption) error {
 	// 先正常加载配置
-	if err := Load(loaderOpts...); err != nil {
+	rc, err := Load(loaderOpts...)
+	if err != nil {
+		return err
+	}
+
+	// 设置全局配置
+	SetAtomicRootConfig(rc)
+
+	// 初始化配置
+	if err := rc.Init(); err != nil {
 		return err
 	}
 
