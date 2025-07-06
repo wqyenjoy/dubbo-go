@@ -18,6 +18,9 @@
 package config
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +32,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/remoting"
 	"github.com/dubbogo/gost/log/logger"
 	"github.com/fsnotify/fsnotify"
+	"github.com/google/go-cmp/cmp"
 	"github.com/knadh/koanf"
 )
 
@@ -44,6 +48,11 @@ type HotReloadManager struct {
 	debounceDelay  time.Duration
 	isRunning      bool
 	stopCh         chan struct{} // 用于优雅停止
+
+	// 幂等性支持
+	lastConfigHash  string               // 上次配置的哈希值
+	processedEvents map[string]time.Time // 已处理的事件ID -> 处理时间
+	eventTTL        time.Duration        // 事件TTL，用于清理过期事件
 }
 
 // NewHotReloadManager 创建新的热加载管理器
@@ -65,13 +74,22 @@ func NewHotReloadManager(configPath string, rootConfig *RootConfig) (*HotReloadM
 		return nil, err
 	}
 
+	// 计算初始配置哈希
+	configHash := ""
+	if rootConfig != nil {
+		configHash = calculateConfigHash(rootConfig)
+	}
+
 	manager := &HotReloadManager{
-		watcher:       watcher,
-		configPath:    absPath,
-		configFile:    filepath.Base(absPath),
-		rootConfig:    rootConfig,
-		debounceDelay: 500 * time.Millisecond, // 默认防抖延迟500ms
-		stopCh:        make(chan struct{}),
+		watcher:         watcher,
+		configPath:      absPath,
+		configFile:      filepath.Base(absPath),
+		rootConfig:      rootConfig,
+		debounceDelay:   500 * time.Millisecond, // 默认防抖延迟500ms
+		stopCh:          make(chan struct{}),
+		lastConfigHash:  configHash,
+		processedEvents: make(map[string]time.Time),
+		eventTTL:        5 * time.Minute, // 事件TTL为5分钟
 	}
 
 	return manager, nil
@@ -221,42 +239,51 @@ func (hrm *HotReloadManager) debouncedReload() {
 
 // reloadConfig 重新加载配置文件
 func (hrm *HotReloadManager) reloadConfig() {
-	logger.Infof("Reloading config file: %s", hrm.configPath)
+	logger.Infof("Reloading configuration from: %s", hrm.configFile)
 
-	// 检查文件是否存在
-	if _, err := os.Stat(hrm.configPath); os.IsNotExist(err) {
-		logger.Errorf("Config file does not exist: %s", hrm.configPath)
-		return
-	}
-
-	// 读取新的配置文件
-	configBytes, err := os.ReadFile(hrm.configPath)
+	// 读取配置文件
+	configBytes, err := os.ReadFile(hrm.configFile)
 	if err != nil {
 		logger.Errorf("Failed to read config file: %v", err)
 		return
 	}
 
-	// 解析配置文件
+	// 解析配置
 	newConfig, err := hrm.parseConfig(configBytes)
 	if err != nil {
-		logger.Errorf("Failed to parse config file: %v", err)
+		logger.Errorf("Failed to parse config: %v", err)
 		return
 	}
 
-	// 验证新配置
+	// 验证配置
 	if err := hrm.validateConfig(newConfig); err != nil {
-		logger.Errorf("Config validation failed: %v", err)
+		logger.Errorf("Invalid config: %v", err)
+		return
+	}
+
+	// 计算新配置的哈希值
+	newConfigHash := calculateConfigHash(newConfig)
+
+	// 检查配置是否真的发生了变化
+	if newConfigHash == hrm.lastConfigHash {
+		logger.Infof("Configuration unchanged, skipping reload")
 		return
 	}
 
 	// 比较配置差异
 	changes := hrm.diffConfig(hrm.rootConfig, newConfig)
-	if len(changes) == 0 {
-		logger.Debugf("No configuration changes detected")
+
+	// 生成事件ID
+	eventID := hrm.generateEventID(changes)
+
+	// 检查事件是否已处理（幂等性检查）
+	if hrm.isEventProcessed(eventID) {
+		logger.Infof("Event already processed, skipping: %s", eventID)
 		return
 	}
 
-	logger.Infof("Configuration changes detected: %v", changes)
+	// 标记事件为已处理
+	hrm.markEventProcessed(eventID)
 
 	// 应用新配置
 	if err := hrm.applyConfig(newConfig); err != nil {
@@ -264,7 +291,10 @@ func (hrm *HotReloadManager) reloadConfig() {
 		return
 	}
 
-	logger.Infof("Config reloaded successfully")
+	// 更新配置哈希
+	hrm.lastConfigHash = newConfigHash
+
+	logger.Infof("Configuration reloaded successfully with %d changes", len(changes))
 }
 
 // parseConfig 解析配置文件
@@ -301,46 +331,319 @@ func (hrm *HotReloadManager) validateConfig(config *RootConfig) error {
 	return nil
 }
 
-// diffConfig 比较配置差异
-func (hrm *HotReloadManager) diffConfig(oldConfig, newConfig *RootConfig) []string {
-	var changes []string
+// ConfigChange 表示配置变更
+type ConfigChange struct {
+	Path string      `json:"path"`
+	Old  interface{} `json:"old"`
+	New  interface{} `json:"new"`
+}
+
+// diffConfig 深度比较配置差异
+func (hrm *HotReloadManager) diffConfig(oldConfig, newConfig *RootConfig) []ConfigChange {
+	var changes []ConfigChange
+
+	// 使用go-cmp进行深度比较
+	diff := cmp.Diff(oldConfig, newConfig, cmp.Options{
+		// 忽略一些不需要比较的字段
+		cmp.FilterPath(func(p cmp.Path) bool {
+			// 忽略一些内部状态字段
+			return strings.Contains(p.String(), "mu") ||
+				strings.Contains(p.String(), "stopCh") ||
+				strings.Contains(p.String(), "isRunning")
+		}, cmp.Ignore()),
+	})
+
+	if diff == "" {
+		return changes
+	}
+
+	// 解析diff结果，生成具体的变更信息
+	changes = hrm.parseDiffResult(oldConfig, newConfig)
+
+	logger.Infof("Configuration changes detected: %d changes", len(changes))
+	for _, change := range changes {
+		logger.Infof("Change: %s = %v -> %v", change.Path, change.Old, change.New)
+	}
+
+	return changes
+}
+
+// parseDiffResult 解析diff结果，生成具体的变更信息
+func (hrm *HotReloadManager) parseDiffResult(oldConfig, newConfig *RootConfig) []ConfigChange {
+	var changes []ConfigChange
 
 	// 比较应用配置
 	if oldConfig.Application.Name != newConfig.Application.Name {
-		changes = append(changes, "application.name")
+		changes = append(changes, ConfigChange{
+			Path: "application.name",
+			Old:  oldConfig.Application.Name,
+			New:  newConfig.Application.Name,
+		})
+	}
+
+	if oldConfig.Application.Version != newConfig.Application.Version {
+		changes = append(changes, ConfigChange{
+			Path: "application.version",
+			Old:  oldConfig.Application.Version,
+			New:  newConfig.Application.Version,
+		})
 	}
 
 	// 比较注册中心配置
-	if len(oldConfig.Registries) != len(newConfig.Registries) {
-		changes = append(changes, "registries")
-	} else {
-		for id, oldReg := range oldConfig.Registries {
-			if newReg, exists := newConfig.Registries[id]; exists {
-				if oldReg.Address != newReg.Address {
-					changes = append(changes, "registries."+id+".address")
-				}
-			} else {
-				changes = append(changes, "registries."+id)
-			}
-		}
-	}
+	changes = append(changes, hrm.diffRegistries(oldConfig.Registries, newConfig.Registries)...)
 
 	// 比较协议配置
-	if len(oldConfig.Protocols) != len(newConfig.Protocols) {
-		changes = append(changes, "protocols")
-	}
+	changes = append(changes, hrm.diffProtocols(oldConfig.Protocols, newConfig.Protocols)...)
 
 	// 比较提供者配置
-	if oldConfig.Provider != nil && newConfig.Provider != nil {
-		if len(oldConfig.Provider.Services) != len(newConfig.Provider.Services) {
-			changes = append(changes, "provider.services")
+	changes = append(changes, hrm.diffProvider(oldConfig.Provider, newConfig.Provider)...)
+
+	// 比较消费者配置
+	changes = append(changes, hrm.diffConsumer(oldConfig.Consumer, newConfig.Consumer)...)
+
+	return changes
+}
+
+// diffRegistries 比较注册中心配置
+func (hrm *HotReloadManager) diffRegistries(oldRegistries, newRegistries map[string]*RegistryConfig) []ConfigChange {
+	var changes []ConfigChange
+
+	// 检查新增和修改的注册中心
+	for name, newReg := range newRegistries {
+		oldReg, exists := oldRegistries[name]
+		if !exists {
+			// 新增注册中心
+			changes = append(changes, ConfigChange{
+				Path: "registries." + name,
+				Old:  nil,
+				New:  newReg,
+			})
+			continue
+		}
+
+		// 比较地址
+		if oldReg.Address != newReg.Address {
+			changes = append(changes, ConfigChange{
+				Path: "registries." + name + ".address",
+				Old:  oldReg.Address,
+				New:  newReg.Address,
+			})
+		}
+
+		// 比较超时时间
+		if oldReg.Timeout != newReg.Timeout {
+			changes = append(changes, ConfigChange{
+				Path: "registries." + name + ".timeout",
+				Old:  oldReg.Timeout,
+				New:  newReg.Timeout,
+			})
 		}
 	}
 
-	// 比较消费者配置
-	if oldConfig.Consumer != nil && newConfig.Consumer != nil {
-		if len(oldConfig.Consumer.References) != len(newConfig.Consumer.References) {
-			changes = append(changes, "consumer.references")
+	// 检查删除的注册中心
+	for name := range oldRegistries {
+		if _, exists := newRegistries[name]; !exists {
+			changes = append(changes, ConfigChange{
+				Path: "registries." + name,
+				Old:  oldRegistries[name],
+				New:  nil,
+			})
+		}
+	}
+
+	return changes
+}
+
+// diffProtocols 比较协议配置
+func (hrm *HotReloadManager) diffProtocols(oldProtocols, newProtocols map[string]*ProtocolConfig) []ConfigChange {
+	var changes []ConfigChange
+
+	// 检查新增和修改的协议
+	for name, newProtocol := range newProtocols {
+		oldProtocol, exists := oldProtocols[name]
+		if !exists {
+			// 新增协议
+			changes = append(changes, ConfigChange{
+				Path: "protocols." + name,
+				Old:  nil,
+				New:  newProtocol,
+			})
+			continue
+		}
+
+		// 比较端口
+		if oldProtocol.Port != newProtocol.Port {
+			changes = append(changes, ConfigChange{
+				Path: "protocols." + name + ".port",
+				Old:  oldProtocol.Port,
+				New:  newProtocol.Port,
+			})
+		}
+
+		// 比较名称
+		if oldProtocol.Name != newProtocol.Name {
+			changes = append(changes, ConfigChange{
+				Path: "protocols." + name + ".name",
+				Old:  oldProtocol.Name,
+				New:  newProtocol.Name,
+			})
+		}
+	}
+
+	// 检查删除的协议
+	for name := range oldProtocols {
+		if _, exists := newProtocols[name]; !exists {
+			changes = append(changes, ConfigChange{
+				Path: "protocols." + name,
+				Old:  oldProtocols[name],
+				New:  nil,
+			})
+		}
+	}
+
+	return changes
+}
+
+// diffProvider 比较提供者配置
+func (hrm *HotReloadManager) diffProvider(oldProvider, newProvider *ProviderConfig) []ConfigChange {
+	var changes []ConfigChange
+
+	if oldProvider == nil || newProvider == nil {
+		return changes
+	}
+
+	// 比较服务配置
+	changes = append(changes, hrm.diffServices(oldProvider.Services, newProvider.Services)...)
+
+	return changes
+}
+
+// diffConsumer 比较消费者配置
+func (hrm *HotReloadManager) diffConsumer(oldConsumer, newConsumer *ConsumerConfig) []ConfigChange {
+	var changes []ConfigChange
+
+	if oldConsumer == nil || newConsumer == nil {
+		return changes
+	}
+
+	// 比较引用配置
+	changes = append(changes, hrm.diffReferences(oldConsumer.References, newConsumer.References)...)
+
+	return changes
+}
+
+// diffServices 比较服务配置
+func (hrm *HotReloadManager) diffServices(oldServices, newServices map[string]*ServiceConfig) []ConfigChange {
+	var changes []ConfigChange
+
+	// 检查新增和修改的服务
+	for name, newService := range newServices {
+		oldService, exists := oldServices[name]
+		if !exists {
+			// 新增服务
+			changes = append(changes, ConfigChange{
+				Path: "provider.services." + name,
+				Old:  nil,
+				New:  newService,
+			})
+			continue
+		}
+
+		// 比较版本
+		if oldService.Version != newService.Version {
+			changes = append(changes, ConfigChange{
+				Path: "provider.services." + name + ".version",
+				Old:  oldService.Version,
+				New:  newService.Version,
+			})
+		}
+
+		// 比较组
+		if oldService.Group != newService.Group {
+			changes = append(changes, ConfigChange{
+				Path: "provider.services." + name + ".group",
+				Old:  oldService.Group,
+				New:  newService.Group,
+			})
+		}
+
+		// 比较接口
+		if oldService.Interface != newService.Interface {
+			changes = append(changes, ConfigChange{
+				Path: "provider.services." + name + ".interface",
+				Old:  oldService.Interface,
+				New:  newService.Interface,
+			})
+		}
+	}
+
+	// 检查删除的服务
+	for name := range oldServices {
+		if _, exists := newServices[name]; !exists {
+			changes = append(changes, ConfigChange{
+				Path: "provider.services." + name,
+				Old:  oldServices[name],
+				New:  nil,
+			})
+		}
+	}
+
+	return changes
+}
+
+// diffReferences 比较引用配置
+func (hrm *HotReloadManager) diffReferences(oldReferences, newReferences map[string]*ReferenceConfig) []ConfigChange {
+	var changes []ConfigChange
+
+	// 检查新增和修改的引用
+	for name, newReference := range newReferences {
+		oldReference, exists := oldReferences[name]
+		if !exists {
+			// 新增引用
+			changes = append(changes, ConfigChange{
+				Path: "consumer.references." + name,
+				Old:  nil,
+				New:  newReference,
+			})
+			continue
+		}
+
+		// 比较版本
+		if oldReference.Version != newReference.Version {
+			changes = append(changes, ConfigChange{
+				Path: "consumer.references." + name + ".version",
+				Old:  oldReference.Version,
+				New:  newReference.Version,
+			})
+		}
+
+		// 比较组
+		if oldReference.Group != newReference.Group {
+			changes = append(changes, ConfigChange{
+				Path: "consumer.references." + name + ".group",
+				Old:  oldReference.Group,
+				New:  newReference.Group,
+			})
+		}
+
+		// 比较接口名称
+		if oldReference.InterfaceName != newReference.InterfaceName {
+			changes = append(changes, ConfigChange{
+				Path: "consumer.references." + name + ".interface",
+				Old:  oldReference.InterfaceName,
+				New:  newReference.InterfaceName,
+			})
+		}
+	}
+
+	// 检查删除的引用
+	for name := range oldReferences {
+		if _, exists := newReferences[name]; !exists {
+			changes = append(changes, ConfigChange{
+				Path: "consumer.references." + name,
+				Old:  oldReferences[name],
+				New:  nil,
+			})
 		}
 	}
 
@@ -386,10 +689,10 @@ func (hrm *HotReloadManager) triggerConfigChangeEvent(newConfig *RootConfig) {
 		// 为每个变更创建事件
 		for _, change := range changes {
 			// 构建配置键，使用标准的Dubbo配置路径格式
-			configKey := "dubbo." + change
+			configKey := "dubbo." + change.Path
 
 			// 获取变更的具体值
-			configValue := hrm.getConfigValue(newConfig, change)
+			configValue := hrm.getConfigValue(newConfig, change.Path)
 
 			// 创建配置变更事件
 			event := &config_center.ConfigChangeEvent{
@@ -459,4 +762,87 @@ func (hrm *HotReloadManager) IsRunning() bool {
 	hrm.mu.RLock()
 	defer hrm.mu.RUnlock()
 	return hrm.isRunning
+}
+
+// calculateConfigHash 计算配置的哈希值
+func calculateConfigHash(config *RootConfig) string {
+	if config == nil {
+		return ""
+	}
+
+	// 序列化配置为JSON
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		logger.Errorf("Failed to marshal config for hash calculation: %v", err)
+		return ""
+	}
+
+	// 计算MD5哈希
+	hash := md5.Sum(configBytes)
+	return hex.EncodeToString(hash[:])
+}
+
+// generateEventID 生成事件ID
+func (hrm *HotReloadManager) generateEventID(changes []ConfigChange) string {
+	// 基于变更内容生成唯一ID
+	eventData := struct {
+		Changes []ConfigChange `json:"changes"`
+		Time    int64          `json:"time"`
+	}{
+		Changes: changes,
+		Time:    time.Now().UnixNano(),
+	}
+
+	eventBytes, err := json.Marshal(eventData)
+	if err != nil {
+		logger.Errorf("Failed to marshal event data for ID generation: %v", err)
+		return ""
+	}
+
+	hash := md5.Sum(eventBytes)
+	return hex.EncodeToString(hash[:])
+}
+
+// isEventProcessed 检查事件是否已处理
+func (hrm *HotReloadManager) isEventProcessed(eventID string) bool {
+	hrm.mu.RLock()
+	defer hrm.mu.RUnlock()
+
+	if processedTime, exists := hrm.processedEvents[eventID]; exists {
+		// 检查事件是否过期
+		if time.Since(processedTime) < hrm.eventTTL {
+			return true
+		}
+		// 过期的事件会被清理
+		delete(hrm.processedEvents, eventID)
+	}
+	return false
+}
+
+// markEventProcessed 标记事件为已处理
+func (hrm *HotReloadManager) markEventProcessed(eventID string) {
+	hrm.mu.Lock()
+	defer hrm.mu.Unlock()
+
+	hrm.processedEvents[eventID] = time.Now()
+
+	// 清理过期事件
+	hrm.cleanupExpiredEvents()
+}
+
+// cleanupExpiredEvents 清理过期事件
+func (hrm *HotReloadManager) cleanupExpiredEvents() {
+	now := time.Now()
+	for eventID, processedTime := range hrm.processedEvents {
+		if now.Sub(processedTime) > hrm.eventTTL {
+			delete(hrm.processedEvents, eventID)
+		}
+	}
+}
+
+// SetEventTTL 设置事件TTL
+func (hrm *HotReloadManager) SetEventTTL(ttl time.Duration) {
+	hrm.mu.Lock()
+	defer hrm.mu.Unlock()
+	hrm.eventTTL = ttl
 }
