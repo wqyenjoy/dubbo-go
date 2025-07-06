@@ -45,22 +45,25 @@ func Load(opts ...LoaderConfOption) error {
 	if conf.rc == nil {
 		koan := GetConfigResolver(conf)
 		koan = conf.MergeConfig(koan)
-		if err := koan.UnmarshalWithConf(rootConfig.Prefix(),
-			rootConfig, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
+		currentRootConfig := GetAtomicRootConfig()
+		if err := koan.UnmarshalWithConf(currentRootConfig.Prefix(),
+			currentRootConfig, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
 			return err
 		}
+		SetAtomicRootConfig(currentRootConfig)
 	} else {
-		rootConfig = conf.rc
+		SetAtomicRootConfig(conf.rc)
 	}
 
-	if err := rootConfig.Init(); err != nil {
+	currentRootConfig := GetAtomicRootConfig()
+	if err := currentRootConfig.Init(); err != nil {
 		return err
 	}
 	return nil
 }
 
 func check() error {
-	if rootConfig == nil {
+	if GetAtomicRootConfig() == nil {
 		return errors.New("execute the config.Load() method first")
 	}
 	return nil
@@ -68,13 +71,15 @@ func check() error {
 
 // GetRPCService get rpc service for consumer
 func GetRPCService(name string) common.RPCService {
-	return rootConfig.Consumer.References[name].GetRPCService()
+	currentRootConfig := GetAtomicRootConfig()
+	return currentRootConfig.Consumer.References[name].GetRPCService()
 }
 
 // RPCService create rpc service for consumer
 func RPCService(service common.RPCService) {
 	ref := common.GetReference(service)
-	rootConfig.Consumer.References[ref].Implement(service)
+	currentRootConfig := GetAtomicRootConfig()
+	currentRootConfig.Consumer.References[ref].Implement(service)
 }
 
 // GetMetricConfig find the MetricsConfig
@@ -92,19 +97,23 @@ func GetMetricConfig() *MetricsConfig {
 	//	}
 	//}
 	//return GetBaseConfig().Metrics
-	return rootConfig.Metrics
+	currentRootConfig := GetAtomicRootConfig()
+	return currentRootConfig.Metrics
 }
 
 func GetTracingConfig(tracingKey string) *TracingConfig {
-	return rootConfig.Tracing[tracingKey]
+	currentRootConfig := GetAtomicRootConfig()
+	return currentRootConfig.Tracing[tracingKey]
 }
 
 func GetMetadataReportConfg() *MetadataReportConfig {
-	return rootConfig.MetadataReport
+	currentRootConfig := GetAtomicRootConfig()
+	return currentRootConfig.MetadataReport
 }
 
 func IsProvider() bool {
-	return len(rootConfig.Provider.Services) > 0
+	currentRootConfig := GetAtomicRootConfig()
+	return len(currentRootConfig.Provider.Services) > 0
 }
 
 // LoadWithHotReload 加载配置并启用热加载功能
@@ -135,7 +144,8 @@ func startHotReloadManager() error {
 	configPath := getConfigPath()
 
 	// 创建热加载管理器
-	manager, err := NewHotReloadManager(configPath, rootConfig)
+	currentRootConfig := GetAtomicRootConfig()
+	manager, err := NewHotReloadManager(configPath, currentRootConfig)
 	if err != nil {
 		logger.Errorf("Failed to create hot reload manager: %v", err)
 		return err
@@ -160,7 +170,8 @@ func startHotReloadManagerWithOptions(opts ...HotReloadOption) error {
 	configPath := getConfigPath()
 
 	// 创建热加载管理器
-	manager, err := NewHotReloadManager(configPath, rootConfig)
+	currentRootConfig := GetAtomicRootConfig()
+	manager, err := NewHotReloadManager(configPath, currentRootConfig)
 	if err != nil {
 		logger.Errorf("Failed to create hot reload manager: %v", err)
 		return err
@@ -202,16 +213,16 @@ func defaultReloadCallback(newConfig *RootConfig) error {
 	logger.Infof("Applying configuration changes...")
 
 	// 备份旧配置
-	oldConfig := rootConfig
+	oldConfig := GetAtomicRootConfig()
 
 	// 更新根配置
-	rootConfig = newConfig
+	SetAtomicRootConfig(newConfig)
 
 	// 应用配置变更
 	if err := applyConfigChanges(oldConfig, newConfig); err != nil {
 		logger.Errorf("Failed to apply config changes: %v", err)
 		// 回滚到旧配置
-		rootConfig = oldConfig
+		SetAtomicRootConfig(oldConfig)
 		return err
 	}
 

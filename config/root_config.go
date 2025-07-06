@@ -20,21 +20,14 @@ package config
 import (
 	"fmt"
 	"sync"
-)
 
-import (
-	hessian "github.com/apache/dubbo-go-hessian2"
-
-	"github.com/dubbogo/gost/log/logger"
-
-	"github.com/knadh/koanf"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config_center"
 	"dubbo.apache.org/dubbo-go/v3/registry/exposed_tmp"
+	hessian "github.com/apache/dubbo-go-hessian2"
+	"github.com/dubbogo/gost/log/logger"
+	"github.com/knadh/koanf"
 )
 
 var (
@@ -64,7 +57,7 @@ type RootConfig struct {
 }
 
 func SetRootConfig(r RootConfig) {
-	rootConfig = &r
+	SetAtomicRootConfig(&r)
 }
 
 // Prefix dubbo
@@ -73,37 +66,42 @@ func (rc *RootConfig) Prefix() string {
 }
 
 func GetRootConfig() *RootConfig {
-	return rootConfig
+	return GetAtomicRootConfig()
 }
 
 func GetProviderConfig() *ProviderConfig {
-	if err := check(); err == nil && rootConfig.Provider != nil {
-		return rootConfig.Provider
+	currentRootConfig := GetAtomicRootConfig()
+	if err := check(); err == nil && currentRootConfig.Provider != nil {
+		return currentRootConfig.Provider
 	}
 	return NewProviderConfigBuilder().Build()
 }
 
 func GetConsumerConfig() *ConsumerConfig {
-	if err := check(); err == nil && rootConfig.Consumer != nil {
-		return rootConfig.Consumer
+	currentRootConfig := GetAtomicRootConfig()
+	if err := check(); err == nil && currentRootConfig.Consumer != nil {
+		return currentRootConfig.Consumer
 	}
 	return NewConsumerConfigBuilder().Build()
 }
 
 func GetApplicationConfig() *ApplicationConfig {
-	return rootConfig.Application
+	currentRootConfig := GetAtomicRootConfig()
+	return currentRootConfig.Application
 }
 
 func GetShutDown() *ShutdownConfig {
-	if err := check(); err == nil && rootConfig.Shutdown != nil {
-		return rootConfig.Shutdown
+	currentRootConfig := GetAtomicRootConfig()
+	if err := check(); err == nil && currentRootConfig.Shutdown != nil {
+		return currentRootConfig.Shutdown
 	}
 	return NewShutDownConfigBuilder().Build()
 }
 
 func GetTLSConfig() *TLSConfig {
-	if err := check(); err == nil && rootConfig.TLSConfig != nil {
-		return rootConfig.TLSConfig
+	currentRootConfig := GetAtomicRootConfig()
+	if err := check(); err == nil && currentRootConfig.TLSConfig != nil {
+		return currentRootConfig.TLSConfig
 	}
 	return NewTLSConfigBuilder().Build()
 }
