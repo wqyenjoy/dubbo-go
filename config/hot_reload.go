@@ -20,6 +20,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,6 +100,15 @@ func (hrm *HotReloadManager) Start() error {
 		return nil
 	}
 
+	// 如果watcher为nil，重新创建
+	if hrm.watcher == nil {
+		watcher, err := fsnotify.NewWatcher()
+		if err != nil {
+			return err
+		}
+		hrm.watcher = watcher
+	}
+
 	// 只监听配置文件所在目录，避免重复事件
 	configDir := filepath.Dir(hrm.configPath)
 	if err := hrm.watcher.Add(configDir); err != nil {
@@ -134,10 +144,16 @@ func (hrm *HotReloadManager) Stop() error {
 	// 发送停止信号
 	close(hrm.stopCh)
 
-	// 关闭文件监听器
-	if err := hrm.watcher.Close(); err != nil {
-		return err
+	// 关闭文件监听器并置为nil
+	if hrm.watcher != nil {
+		if err := hrm.watcher.Close(); err != nil {
+			return err
+		}
+		hrm.watcher = nil // 修复可重入问题
 	}
+
+	// 重新创建stopCh，以便下次Start时使用
+	hrm.stopCh = make(chan struct{})
 
 	logger.Infof("Hot reload manager stopped")
 	return nil
@@ -364,27 +380,70 @@ func (hrm *HotReloadManager) triggerConfigChangeEvent(newConfig *RootConfig) {
 	dynamicConfig := envInstance.GetDynamicConfiguration()
 
 	if dynamicConfig != nil {
-		// 将配置变更封装成 ConfigChangeEvent
-		// 这里我们使用一个特殊的 key 来表示根配置变更
-		configKey := "root-config"
+		// 比较配置差异，生成详细的变更信息
+		changes := hrm.diffConfig(hrm.rootConfig, newConfig)
 
-		// 将新配置序列化为字符串（这里简化处理，实际可能需要更复杂的序列化）
-		configContent := "root-config-updated"
+		// 为每个变更创建事件
+		for _, change := range changes {
+			// 构建配置键，使用标准的Dubbo配置路径格式
+			configKey := "dubbo." + change
 
-		// 创建配置变更事件
-		event := &config_center.ConfigChangeEvent{
-			Key:        configKey,
-			Value:      configContent,
-			ConfigType: remoting.EventTypeUpdate,
+			// 获取变更的具体值
+			configValue := hrm.getConfigValue(newConfig, change)
+
+			// 创建配置变更事件
+			event := &config_center.ConfigChangeEvent{
+				Key:        configKey,
+				Value:      configValue,
+				ConfigType: remoting.EventTypeUpdate,
+			}
+
+			// 通知 RootConfig 处理配置变更
+			newConfig.Process(event)
+
+			logger.Infof("Configuration change event triggered: key=%s, value=%s", configKey, configValue)
 		}
 
-		// 通知 RootConfig 处理配置变更
-		// RootConfig 实现了 ConfigurationListener 接口
-		newConfig.Process(event)
-
-		logger.Infof("Configuration change event triggered and processed by dynamic configuration center")
+		logger.Infof("Configuration change events triggered and processed by dynamic configuration center")
 	} else {
 		logger.Infof("Configuration change event triggered (no dynamic configuration center available)")
+	}
+}
+
+// getConfigValue 根据配置路径获取配置值
+func (hrm *HotReloadManager) getConfigValue(config *RootConfig, path string) string {
+	switch path {
+	case "application.name":
+		return config.Application.Name
+	case "application.version":
+		return config.Application.Version
+	case "application.owner":
+		return config.Application.Owner
+	case "application.organization":
+		return config.Application.Organization
+	case "application.module":
+		return config.Application.Module
+	case "application.environment":
+		return config.Application.Environment
+	case "registries":
+		// 返回注册中心配置的JSON表示
+		return "registries-config-updated"
+	default:
+		// 对于其他配置，返回一个通用的更新标识
+		if strings.HasPrefix(path, "registries.") {
+			// 注册中心相关配置
+			return "registry-config-updated"
+		} else if strings.HasPrefix(path, "protocols.") {
+			// 协议相关配置
+			return "protocol-config-updated"
+		} else if strings.HasPrefix(path, "provider.") {
+			// 提供者相关配置
+			return "provider-config-updated"
+		} else if strings.HasPrefix(path, "consumer.") {
+			// 消费者相关配置
+			return "consumer-config-updated"
+		}
+		return "config-updated"
 	}
 }
 
