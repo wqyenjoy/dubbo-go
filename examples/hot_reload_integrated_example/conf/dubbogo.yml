@@ -1,0 +1,54 @@
+# Dubbo-go 配置文件
+# 支持热加载，修改此文件后会自动重新加载配置
+
+application:
+  name: hot-reload-example
+  version: 1.0.0
+  organization: dubbo-go
+  module: hot-reload-example
+  owner: dubbo-go
+  environment: dev
+
+registries:
+  demoZK:
+    protocol: zookeeper
+    address: 127.0.0.1:2181
+    timeout: 3s
+
+protocols:
+  dubbo:
+    name: dubbo
+    port: 20000
+    threads: 200
+
+services:
+  UserProvider:
+    interface: com.example.UserService
+    version: 1.0.0
+    group: test
+    protocol: dubbo
+    registry: demoZK
+    loadbalance: random
+    cluster: failover
+    retries: 3
+    timeout: 3000
+
+consumers:
+  UserConsumer:
+    interface: com.example.UserService
+    version: 1.0.0
+    group: test
+    protocol: dubbo
+    registry: demoZK
+    loadbalance: random
+    cluster: failover
+    retries: 3
+    timeout: 3000
+
+# 配置中心设置
+config-center:
+  protocol: hot-reload-file
+  address: file:///Users/john/GolandProjects/dubbo-go/examples/hot_reload_integrated_example/conf/dubbogo.yml
+  params:
+    config-path: /Users/john/GolandProjects/dubbo-go/examples/hot_reload_integrated_example/conf/dubbogo.yml
+    debounce-delay: 500ms
