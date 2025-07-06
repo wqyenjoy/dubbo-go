@@ -416,12 +416,63 @@ func (rc *RootConfig) Process(event *config_center.ConfigChangeEvent) {
 		return
 	}
 
+	// 校验配置变更的合法性
+	if err := rc.validateConfigChange(updateRootConfig); err != nil {
+		logger.Warnf("Config change validation failed: %v, keeping current config", err)
+		return
+	}
+
 	// 原子替换配置，避免并发问题
 	rc.atomicUpdate(updateRootConfig)
 }
 
+// validateConfigChange 校验配置变更的合法性
+func (rc *RootConfig) validateConfigChange(updateRootConfig *RootConfig) error {
+	// 校验不可动态修改的字段
+	if updateRootConfig.Application != nil {
+		// 应用名称不允许动态修改
+		if updateRootConfig.Application.Name != "" &&
+			rc.Application != nil &&
+			updateRootConfig.Application.Name != rc.Application.Name {
+			return fmt.Errorf("application name cannot be changed dynamically: %s -> %s",
+				rc.Application.Name, updateRootConfig.Application.Name)
+		}
+	}
+
+	// 校验协议配置 - 端口等关键字段不允许动态修改
+	if len(updateRootConfig.Protocols) > 0 {
+		for protocolID, updateProtocol := range updateRootConfig.Protocols {
+			if currentProtocol, exists := rc.Protocols[protocolID]; exists {
+				if updateProtocol.Port != "" && updateProtocol.Port != currentProtocol.Port {
+					return fmt.Errorf("protocol %s port cannot be changed dynamically: %s -> %s",
+						protocolID, currentProtocol.Port, updateProtocol.Port)
+				}
+				if updateProtocol.Name != "" && updateProtocol.Name != currentProtocol.Name {
+					return fmt.Errorf("protocol %s name cannot be changed dynamically: %s -> %s",
+						protocolID, currentProtocol.Name, updateProtocol.Name)
+				}
+			}
+		}
+	}
+
+	// 校验TLS配置 - 证书文件等不允许动态修改
+	if updateRootConfig.TLSConfig != nil && rc.TLSConfig != nil {
+		if updateRootConfig.TLSConfig.TLSCertFile != "" && updateRootConfig.TLSConfig.TLSCertFile != rc.TLSConfig.TLSCertFile {
+			return fmt.Errorf("TLS cert file cannot be changed dynamically: %s -> %s",
+				rc.TLSConfig.TLSCertFile, updateRootConfig.TLSConfig.TLSCertFile)
+		}
+		if updateRootConfig.TLSConfig.TLSKeyFile != "" && updateRootConfig.TLSConfig.TLSKeyFile != rc.TLSConfig.TLSKeyFile {
+			return fmt.Errorf("TLS key file cannot be changed dynamically: %s -> %s",
+				rc.TLSConfig.TLSKeyFile, updateRootConfig.TLSConfig.TLSKeyFile)
+		}
+	}
+
+	return nil
+}
+
 // atomicUpdate 原子更新配置，避免并发问题
 func (rc *RootConfig) atomicUpdate(updateRootConfig *RootConfig) {
+	// 使用现有的配置更新机制，避免复杂的深拷贝
 	// 动态更新注册中心
 	for registerId, updateRegister := range updateRootConfig.Registries {
 		if register, exists := rc.Registries[registerId]; exists {
@@ -456,6 +507,41 @@ func (rc *RootConfig) atomicUpdate(updateRootConfig *RootConfig) {
 	if updateRootConfig.Provider != nil {
 		rc.Provider.DynamicUpdateProperties(updateRootConfig.Provider)
 	}
+
+	// 其他配置直接替换（没有DynamicUpdateProperties方法）
+	if updateRootConfig.Otel != nil {
+		rc.Otel = updateRootConfig.Otel
+	}
+
+	if updateRootConfig.ConfigCenter != nil {
+		rc.ConfigCenter = updateRootConfig.ConfigCenter
+	}
+
+	if updateRootConfig.MetadataReport != nil {
+		rc.MetadataReport = updateRootConfig.MetadataReport
+	}
+
+	if updateRootConfig.Shutdown != nil {
+		rc.Shutdown = updateRootConfig.Shutdown
+	}
+
+	if updateRootConfig.Custom != nil {
+		rc.Custom = updateRootConfig.Custom
+	}
+
+	// TLS配置直接替换
+	if updateRootConfig.TLSConfig != nil {
+		rc.TLSConfig = updateRootConfig.TLSConfig
+	}
+
+	// 协议配置直接替换
+	if len(updateRootConfig.Protocols) > 0 {
+		for k, v := range updateRootConfig.Protocols {
+			rc.Protocols[k] = v
+		}
+	}
+
+	logger.Infof("Config updated successfully")
 }
 
 // TODO：When config is migrated later, the impact of this will be migrated to the global module

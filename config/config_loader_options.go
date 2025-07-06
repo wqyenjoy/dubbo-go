@@ -89,7 +89,8 @@ func WithGenre(suffix string) LoaderConfOption {
 	return loaderConfigFunc(func(conf *loaderConf) {
 		g := strings.ToLower(suffix)
 		if err := checkFileSuffix(g); err != nil {
-			panic(err)
+			logger.Errorf("unsupported file suffix: %s, error: %v", suffix, err)
+			return // 不panic，只记录错误
 		}
 		conf.suffix = g
 	})
