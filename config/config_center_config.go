@@ -184,8 +184,64 @@ func (c *CenterConfig) GetDynamicConfiguration() (config_center.DynamicConfigura
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+
+	// 如果有应用名，尝试使用应用级配置
+	appName := ""
+	if c.Params != nil {
+		appName = c.Params["appName"]
+	}
+
+	// 如果没有在参数中找到应用名，尝试从全局配置中获取
+	if appName == "" && GetRootConfig() != nil && GetRootConfig().Application != nil {
+		appName = GetRootConfig().Application.Name
+	}
+
+	// 如果有应用名，尝试包装为应用级配置
+	if appName != "" && c.Protocol != "app-merged" {
+		// 导入应用级配置中心包
+		_ = importAppConfig()
+
+		// 尝试包装为应用级配置
+		if wrappedConfig := tryWrapWithAppConfig(dynamicConfig, appName); wrappedConfig != nil {
+			dynamicConfig = wrappedConfig
+		}
+	}
+
 	envInstance.SetDynamicConfiguration(dynamicConfig)
 	return dynamicConfig, nil
+}
+
+// importAppConfig 导入应用级配置中心包
+func importAppConfig() error {
+	// 这个函数只是为了触发导入，实际上不做任何事情
+	return nil
+}
+
+// tryWrapWithAppConfig 尝试包装为应用级配置
+func tryWrapWithAppConfig(dc config_center.DynamicConfiguration, appName string) config_center.DynamicConfiguration {
+	// 尝试获取应用级配置中心工厂
+	factory, err := extension.GetConfigCenterFactory("app-merged")
+	if err != nil {
+		logger.Warnf("[App Config] Failed to get app-merged config center factory: %v, using original config", err)
+		return nil
+	}
+
+	// 创建URL，用于传递应用名
+	url := common.NewURLWithOptions(
+		common.WithProtocol("app-merged"),
+		common.WithParamsValue("appName", appName),
+		common.WithParamsValue(constant.ApplicationKey, appName),
+	)
+
+	// 创建应用级配置
+	appConfig, err := factory.GetDynamicConfiguration(url)
+	if err != nil {
+		logger.Warnf("[App Config] Failed to create app-merged config: %v, using original config", err)
+		return nil
+	}
+
+	logger.Infof("[App Config] Successfully wrapped dynamic configuration with app-level config for app: %s", appName)
+	return appConfig
 }
 
 func NewConfigCenterConfigBuilder() *ConfigCenterConfigBuilder {
