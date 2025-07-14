@@ -19,24 +19,56 @@ package app
 
 import (
 	"dubbo.apache.org/dubbo-go/v3/common"
+	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/config_center"
+	"github.com/dubbogo/gost/log/logger"
+)
+
+const (
+	// AppMergedConfigKey is the protocol identifier for application-level configuration center
+	AppMergedConfigKey = "app-merged"
 )
 
 func init() {
-	// 注册应用级配置中心工厂
+	// Register application-level configuration center factory
 	extension.SetConfigCenterFactory(AppMergedConfigKey, createAppMergedFactory)
 }
 
-// 创建工厂函数
+// createAppMergedFactory returns a factory function for creating app-merged configurations
 func createAppMergedFactory() config_center.DynamicConfigurationFactory {
 	return &appMergedDynamicConfigurationFactory{}
 }
 
-// 应用级配置中心工厂
+// appMergedDynamicConfigurationFactory is a factory for creating app-merged dynamic configurations
 type appMergedDynamicConfigurationFactory struct{}
 
-// GetDynamicConfiguration 获取应用级动态配置
+// GetDynamicConfiguration creates a new app-merged dynamic configuration
 func (f *appMergedDynamicConfigurationFactory) GetDynamicConfiguration(url *common.URL) (config_center.DynamicConfiguration, error) {
-	return newAppMergedDynamicConfiguration(url)
+	// Get the original configuration center protocol
+	protocol := url.GetParam("protocol", "zookeeper")
+
+	// Get application name
+	appName := url.GetParam("appName", "")
+	if appName == "" {
+		// Try to get application name from URL's application parameter
+		appName = url.GetParam(constant.ApplicationKey, "")
+	}
+
+	// Create the original dynamic configuration
+	factory, err := extension.GetConfigCenterFactory(protocol)
+	if err != nil {
+		logger.Errorf("[App Config] Failed to get config center factory for protocol: %s, error: %v", protocol, err)
+		return nil, err
+	}
+
+	// Create the original dynamic configuration
+	dc, err := factory.GetDynamicConfiguration(url)
+	if err != nil {
+		logger.Errorf("[App Config] Failed to create dynamic configuration for protocol: %s, error: %v", protocol, err)
+		return nil, err
+	}
+
+	// Create application-level configuration decorator
+	return NewAppMergedConfiguration(appName, dc), nil
 }

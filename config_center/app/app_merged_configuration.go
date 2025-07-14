@@ -15,69 +15,82 @@
  * limitations under the License.
  */
 
+// Package app provides application level configuration center support
 package app
 
 import (
 	"strings"
+	"sync"
 
 	gxset "github.com/dubbogo/gost/container/set"
 	"github.com/dubbogo/gost/log/logger"
 
-	"dubbo.apache.org/dubbo-go/v3/common"
-	"dubbo.apache.org/dubbo-go/v3/common/constant"
-	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/config_center"
 	"dubbo.apache.org/dubbo-go/v3/config_center/parser"
 )
 
-const (
-	// AppMergedConfigKey 是应用级配置中心的协议标识
-	AppMergedConfigKey = "app-merged"
-)
-
-// AppMergedConfiguration 装饰器，实现应用级配置与全局配置的合并
+// AppMergedConfiguration is a decorator for DynamicConfiguration that adds application-level configuration support
+// It follows the priority order: application-level config > global config
 type AppMergedConfiguration struct {
-	config_center.DynamicConfiguration // 嵌入原始动态配置实现
-	appName                            string
-	appSuffix                          string
+	config    config_center.DynamicConfiguration // Underlying dynamic configuration implementation
+	appName   string
+	appSuffix string
+	mutex     sync.RWMutex // Mutex for concurrency protection
+
+	// List of configuration change listeners
+	changeListeners []ConfigChangeListener
 }
 
-// NewAppMergedConfiguration 创建新的应用级配置装饰器
-func NewAppMergedConfiguration(dc config_center.DynamicConfiguration, appName string) config_center.DynamicConfiguration {
+// ConfigChangeListener is a function type that will be called when configuration changes
+type ConfigChangeListener func(key string, oldValue, newValue string)
+
+// AddChangeListener adds a listener that will be notified when configuration changes
+func (a *AppMergedConfiguration) AddChangeListener(listener ConfigChangeListener) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	a.changeListeners = append(a.changeListeners, listener)
+}
+
+// NewAppMergedConfiguration creates a new application-level configuration decorator
+func NewAppMergedConfiguration(appName string, config config_center.DynamicConfiguration) *AppMergedConfiguration {
 	return &AppMergedConfiguration{
-		DynamicConfiguration: dc,
-		appName:              appName,
-		appSuffix:            appName + ".",
+		config:    config,
+		appName:   appName,
+		appSuffix: appName + ".",
+		mutex:     sync.RWMutex{},
 	}
 }
 
-// Parser 获取配置解析器
+// Parser gets the configuration parser
 func (a *AppMergedConfiguration) Parser() parser.ConfigurationParser {
-	return a.DynamicConfiguration.Parser()
+	return a.config.Parser()
 }
 
-// SetParser 设置配置解析器
+// SetParser sets the configuration parser
 func (a *AppMergedConfiguration) SetParser(p parser.ConfigurationParser) {
-	a.DynamicConfiguration.SetParser(p)
+	a.config.SetParser(p)
 }
 
-// GetProperties 获取配置，优先获取应用级配置，如果不存在则获取全局配置
+// GetProperties gets configuration with thread safety, prioritizing application-level config
 func (a *AppMergedConfiguration) GetProperties(key string, opts ...config_center.Option) (string, error) {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		return a.DynamicConfiguration.GetProperties(key, opts...)
+		return a.config.GetProperties(key, opts...)
 	}
 
-	// 尝试获取应用级配置
+	// Try to get application-level configuration
 	appKey := a.appSuffix + key
-	appContent, err := a.DynamicConfiguration.GetProperties(appKey, opts...)
+	appContent, err := a.config.GetProperties(appKey, opts...)
 	if err == nil && len(appContent) > 0 {
 		logger.Infof("[App Config] Using app-level config for key: %s", appKey)
 		return appContent, nil
 	}
 
-	// 应用级配置不存在或为空，回退到全局配置
-	globalContent, err := a.DynamicConfiguration.GetProperties(key, opts...)
+	// Fall back to global configuration if application-level config doesn't exist or is empty
+	globalContent, err := a.config.GetProperties(key, opts...)
 	if err != nil {
 		logger.Warnf("[App Config] Failed to get config for both app-level(%s) and global(%s): %v",
 			appKey, key, err)
@@ -87,23 +100,26 @@ func (a *AppMergedConfiguration) GetProperties(key string, opts ...config_center
 	return globalContent, nil
 }
 
-// GetRule 获取路由规则，优先获取应用级规则
+// GetRule gets routing rules with thread safety, prioritizing application-level rules
 func (a *AppMergedConfiguration) GetRule(key string, opts ...config_center.Option) (string, error) {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		return a.DynamicConfiguration.GetRule(key, opts...)
+		return a.config.GetRule(key, opts...)
 	}
 
-	// 尝试获取应用级规则
+	// Try to get application-level rule
 	appKey := a.appSuffix + key
-	appRule, err := a.DynamicConfiguration.GetRule(appKey, opts...)
+	appRule, err := a.config.GetRule(appKey, opts...)
 	if err == nil && len(appRule) > 0 {
 		logger.Infof("[App Config] Using app-level rule for key: %s", appKey)
 		return appRule, nil
 	}
 
-	// 应用级规则不存在或为空，回退到全局规则
-	globalRule, err := a.DynamicConfiguration.GetRule(key, opts...)
+	// Fall back to global rule if application-level rule doesn't exist or is empty
+	globalRule, err := a.config.GetRule(key, opts...)
 	if err != nil {
 		logger.Warnf("[App Config] Failed to get rule for both app-level(%s) and global(%s): %v",
 			appKey, key, err)
@@ -113,23 +129,26 @@ func (a *AppMergedConfiguration) GetRule(key string, opts ...config_center.Optio
 	return globalRule, nil
 }
 
-// GetInternalProperty 获取内部属性，优先获取应用级属性
+// GetInternalProperty gets internal property with thread safety, prioritizing application-level property
 func (a *AppMergedConfiguration) GetInternalProperty(key string, opts ...config_center.Option) (string, error) {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		return a.DynamicConfiguration.GetInternalProperty(key, opts...)
+		return a.config.GetInternalProperty(key, opts...)
 	}
 
-	// 尝试获取应用级内部属性
+	// Try to get application-level internal property
 	appKey := a.appSuffix + key
-	appProperty, err := a.DynamicConfiguration.GetInternalProperty(appKey, opts...)
+	appProperty, err := a.config.GetInternalProperty(appKey, opts...)
 	if err == nil && len(appProperty) > 0 {
 		logger.Infof("[App Config] Using app-level internal property for key: %s", appKey)
 		return appProperty, nil
 	}
 
-	// 应用级内部属性不存在或为空，回退到全局内部属性
-	globalProperty, err := a.DynamicConfiguration.GetInternalProperty(key, opts...)
+	// Fall back to global internal property if application-level property doesn't exist or is empty
+	globalProperty, err := a.config.GetInternalProperty(key, opts...)
 	if err != nil {
 		logger.Warnf("[App Config] Failed to get internal property for both app-level(%s) and global(%s): %v",
 			appKey, key, err)
@@ -139,105 +158,125 @@ func (a *AppMergedConfiguration) GetInternalProperty(key string, opts ...config_
 	return globalProperty, nil
 }
 
-// PublishConfig 发布配置，同时发布到应用级和全局
+// PublishConfig publishes configuration with thread safety
 func (a *AppMergedConfiguration) PublishConfig(key string, group string, value string) error {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		return a.DynamicConfiguration.PublishConfig(key, group, value)
+		return a.config.PublishConfig(key, group, value)
 	}
 
-	// 发布到应用级配置
+	// Publish to application-level configuration
 	appKey := a.appSuffix + key
-	err := a.DynamicConfiguration.PublishConfig(appKey, group, value)
+	err := a.config.PublishConfig(appKey, group, value)
 	if err != nil {
 		logger.Warnf("[App Config] Failed to publish app-level config for key: %s, error: %v", appKey, err)
-		// 发布应用级配置失败，尝试发布到全局配置
-		return a.DynamicConfiguration.PublishConfig(key, group, value)
+		// Fall back to publishing to global configuration if publishing to application-level fails
+		return a.config.PublishConfig(key, group, value)
+	}
+
+	// Notify listeners about the change
+	for _, listener := range a.changeListeners {
+		go listener(key, "", value) // We don't have the old value here
 	}
 
 	return nil
 }
 
-// RemoveConfig 移除配置，同时从应用级和全局移除
+// RemoveConfig removes configuration with thread safety
 func (a *AppMergedConfiguration) RemoveConfig(key string, group string) error {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		return a.DynamicConfiguration.RemoveConfig(key, group)
+		return a.config.RemoveConfig(key, group)
 	}
 
-	// 移除应用级配置
+	// Remove application-level configuration
 	appKey := a.appSuffix + key
-	_ = a.DynamicConfiguration.RemoveConfig(appKey, group)
-	// 无论应用级配置移除是否成功，都尝试移除全局配置
-	return a.DynamicConfiguration.RemoveConfig(key, group)
+	_ = a.config.RemoveConfig(appKey, group)
+	// Always try to remove global configuration regardless of whether removing application-level config succeeds
+	return a.config.RemoveConfig(key, group)
 }
 
-// AddListener 添加监听器，同时监听应用级和全局配置
+// AddListener adds a listener with thread safety
 func (a *AppMergedConfiguration) AddListener(key string, listener config_center.ConfigurationListener, opts ...config_center.Option) {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		a.DynamicConfiguration.AddListener(key, listener, opts...)
+		a.config.AddListener(key, listener, opts...)
 		return
 	}
 
-	// 监听应用级配置
+	// Listen to application-level configuration
 	appKey := a.appSuffix + key
-	a.DynamicConfiguration.AddListener(appKey, listener, opts...)
-	// 同时监听全局配置
-	a.DynamicConfiguration.AddListener(key, listener, opts...)
+	a.config.AddListener(appKey, listener, opts...)
+	// Also listen to global configuration
+	a.config.AddListener(key, listener, opts...)
 }
 
-// RemoveListener 移除监听器，同时从应用级和全局移除
+// RemoveListener removes a listener with thread safety
 func (a *AppMergedConfiguration) RemoveListener(key string, listener config_center.ConfigurationListener, opts ...config_center.Option) {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		a.DynamicConfiguration.RemoveListener(key, listener, opts...)
+		a.config.RemoveListener(key, listener, opts...)
 		return
 	}
 
-	// 移除应用级配置监听器
+	// Remove listener from application-level configuration
 	appKey := a.appSuffix + key
-	a.DynamicConfiguration.RemoveListener(appKey, listener, opts...)
-	// 同时移除全局配置监听器
-	a.DynamicConfiguration.RemoveListener(key, listener, opts...)
+	a.config.RemoveListener(appKey, listener, opts...)
+	// Also remove listener from global configuration
+	a.config.RemoveListener(key, listener, opts...)
 }
 
-// GetConfigKeysByGroup 获取组内所有配置键，合并应用级和全局配置键
+// GetConfigKeysByGroup gets all configuration keys in a group with thread safety
 func (a *AppMergedConfiguration) GetConfigKeysByGroup(group string) (*gxset.HashSet, error) {
-	// 如果应用名为空，直接使用原始实现
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	// If application name is empty, use the original implementation
 	if a.appName == "" {
-		return a.DynamicConfiguration.GetConfigKeysByGroup(group)
+		return a.config.GetConfigKeysByGroup(group)
 	}
 
-	// 获取全局配置键
-	globalKeys, err := a.DynamicConfiguration.GetConfigKeysByGroup(group)
+	// Get global configuration keys
+	globalKeys, err := a.config.GetConfigKeysByGroup(group)
 	if err != nil {
 		return nil, err
 	}
 
-	// 尝试获取应用级配置键
-	appKeys, err := a.DynamicConfiguration.GetConfigKeysByGroup(group)
+	// Try to get application-level configuration keys
+	appKeys, err := a.config.GetConfigKeysByGroup(group)
 	if err != nil {
-		// 应用级配置键获取失败，仅返回全局配置键
+		// If getting application-level keys fails, just return global keys
 		return globalKeys, nil
 	}
 
-	// 合并应用级和全局配置键
+	// Merge application-level and global configuration keys
 	mergedKeys := gxset.NewSet()
 
-	// 添加全局配置键
+	// Add global configuration keys
 	if globalKeys != nil {
 		for _, k := range globalKeys.Values() {
 			mergedKeys.Add(k)
 		}
 	}
 
-	// 处理应用级配置键，移除应用前缀
+	// Process application-level keys, removing application prefix
 	if appKeys != nil {
 		for _, k := range appKeys.Values() {
 			keyStr, ok := k.(string)
 			if ok && strings.HasPrefix(keyStr, a.appSuffix) {
-				// 移除应用前缀
+				// Remove application prefix
 				globalKey := keyStr[len(a.appSuffix):]
 				mergedKeys.Add(globalKey)
 			}
@@ -245,34 +284,4 @@ func (a *AppMergedConfiguration) GetConfigKeysByGroup(group string) (*gxset.Hash
 	}
 
 	return mergedKeys, nil
-}
-
-// 工厂函数，用于注册到扩展机制
-func newAppMergedDynamicConfiguration(url *common.URL) (config_center.DynamicConfiguration, error) {
-	// 获取原始配置中心协议
-	protocol := url.GetParam("protocol", "zookeeper")
-
-	// 获取应用名
-	appName := url.GetParam("appName", "")
-	if appName == "" {
-		// 尝试从 URL 的 application 参数获取应用名
-		appName = url.GetParam(constant.ApplicationKey, "")
-	}
-
-	// 创建原始动态配置
-	factory, err := extension.GetConfigCenterFactory(protocol)
-	if err != nil {
-		logger.Errorf("[App Config] Failed to get config center factory for protocol: %s, error: %v", protocol, err)
-		return nil, err
-	}
-
-	// 创建原始动态配置
-	dc, err := factory.GetDynamicConfiguration(url)
-	if err != nil {
-		logger.Errorf("[App Config] Failed to create dynamic configuration for protocol: %s, error: %v", protocol, err)
-		return nil, err
-	}
-
-	// 创建应用级配置装饰器
-	return NewAppMergedConfiguration(dc, appName), nil
 }

@@ -1,4 +1,3 @@
-
 # Release Notes
 ---
 ## 3.3.0
@@ -110,6 +109,9 @@ Special thanks to all contributors for their efforts in improving Apache Dubbo-G
 - [Add some metrics about RT](https://github.com/apache/dubbo-go/pull/2340)
 - [Add metrics base api interface](https://github.com/apache/dubbo-go/pull/2350)
 - [Sliding window and rt quantile metrics](https://github.com/apache/dubbo-go/pull/2356)
+- [#2864](https://github.com/apache/dubbo-go/pull/2864) Add application-level configuration center support
+- [#2864](https://github.com/apache/dubbo-go/pull/2864) Fix concurrent safety issues in ApplicationConfig
+- [#2864](https://github.com/apache/dubbo-go/pull/2864) Enhance validation for application name and metadata service port
 
 ### Bugfixes
 

@@ -20,21 +20,19 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
-)
 
-import (
+	"dubbo.apache.org/dubbo-go/v3/common/constant"
+	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"github.com/go-playground/validator/v10"
-
 	"github.com/pkg/errors"
 )
 
-import (
-	"dubbo.apache.org/dubbo-go/v3/common/constant"
-	"dubbo.apache.org/dubbo-go/v3/common/extension"
-)
-
 var validate *validator.Validate
+
+// namePattern is the regex pattern for validating application name and group
+var namePattern = regexp.MustCompile(`^[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9]$`)
 
 func init() {
 	validate = validator.New()
@@ -100,7 +98,39 @@ func translateIds(registryIds []string) []string {
 	return removeDuplicateElement(ids)
 }
 
+// validatePortRange checks if the port is within valid range (1-65535)
+func validatePortRange(port string) error {
+	if port == "" {
+		return nil // Empty port is allowed (will use default)
+	}
+
+	portNum, err := strconv.Atoi(port)
+	if err != nil {
+		return errors.New("port must be a valid number")
+	}
+
+	if portNum < 1 || portNum > 65535 {
+		return errors.New("port must be in range 1-65535")
+	}
+
+	return nil
+}
+
+// validateName checks if the name follows the naming convention
+func validateName(name string) error {
+	if name == "" {
+		return nil // Empty name is allowed (will use default)
+	}
+
+	if !namePattern.MatchString(name) {
+		return errors.New("name must contain only alphanumeric characters, dots, and hyphens, and must not start or end with a hyphen or dot")
+	}
+
+	return nil
+}
+
 func verify(s any) error {
+	// First run the validator library checks
 	if err := validate.Struct(s); err != nil {
 		errs := err.(validator.ValidationErrors)
 		var slice []string
@@ -109,6 +139,26 @@ func verify(s any) error {
 		}
 		return errors.New(strings.Join(slice, ","))
 	}
+
+	// Additional specific validations based on type
+	switch config := s.(type) {
+	case *ApplicationConfig:
+		// Validate application name
+		if err := validateName(config.Name); err != nil {
+			return errors.Wrap(err, "invalid application name")
+		}
+
+		// Validate group name
+		if err := validateName(config.Group); err != nil {
+			return errors.Wrap(err, "invalid group name")
+		}
+
+		// Validate metadata service port
+		if err := validatePortRange(config.MetadataServicePort); err != nil {
+			return errors.Wrap(err, "invalid metadata service port")
+		}
+	}
+
 	return nil
 }
 

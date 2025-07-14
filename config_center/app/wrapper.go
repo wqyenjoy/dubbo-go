@@ -24,22 +24,23 @@ import (
 	"github.com/dubbogo/gost/log/logger"
 )
 
-// WrapWithAppConfig 将普通动态配置包装为应用级配置
+// WrapWithAppConfig wraps a regular dynamic configuration with application-level configuration support
 func WrapWithAppConfig(dc config_center.DynamicConfiguration, appName string) config_center.DynamicConfiguration {
-	// 如果应用名为空，直接返回原始配置
+	// If application name is empty, return the original configuration
 	if appName == "" {
 		return dc
 	}
 
-	// 创建URL，用于传递应用名
+	// Create URL for passing application name
 	url := common.NewURLWithOptions(
 		common.WithProtocol(AppMergedConfigKey),
 		common.WithParamsValue("appName", appName),
 		common.WithParamsValue(constant.ApplicationKey, appName),
 	)
 
-	// 创建应用级配置
-	appConfig, err := newAppMergedDynamicConfiguration(url)
+	// Create application-level configuration
+	factory := &appMergedDynamicConfigurationFactory{}
+	appConfig, err := factory.GetDynamicConfiguration(url)
 	if err != nil {
 		logger.Warnf("[App Config] Failed to create app-merged config: %v, using original config", err)
 		return dc
