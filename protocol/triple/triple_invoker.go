@@ -61,7 +61,7 @@ func (ti *TripleInvoker) getClientManager() *clientManager {
 // Invoke is used to call client-side method.
 func (ti *TripleInvoker) Invoke(ctx context.Context, invocation base.Invocation) result.Result {
 
-	logger.Errorf("here????????????")
+    // removed debug log
 	var result result.RPCResult
 
 	if !ti.BaseInvoker.IsAvailable() {
