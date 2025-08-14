@@ -20,18 +20,14 @@ package metadata
 import (
 	"strconv"
 	"testing"
-)
 
-import (
-	"github.com/stretchr/testify/assert"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/metadata/info"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
+	"github.com/stretchr/testify/assert"
+
 	_ "dubbo.apache.org/dubbo-go/v3/proxy/proxy_factory"
 )
 
@@ -302,8 +298,13 @@ func Test_serviceExporterExport(t *testing.T) {
 	defer mockExporter.AssertExpectations(t)
 	dubboProtocol := new(mockProtocol)
 	defer dubboProtocol.AssertExpectations(t)
+	triProtocol := new(mockProtocol)
+	defer triProtocol.AssertExpectations(t)
 	extension.SetProtocol("dubbo", func() base.Protocol {
 		return dubboProtocol
+	})
+	extension.SetProtocol("tri", func() base.Protocol {
+		return triProtocol
 	})
 	t.Run("normal", func(t *testing.T) {
 		port := common.GetRandomPort("")
@@ -316,6 +317,7 @@ func Test_serviceExporterExport(t *testing.T) {
 			port:         p,
 		}
 		dubboProtocol.On("Export").Return(mockExporter).Once()
+		triProtocol.On("Export").Return(mockExporter).Once()
 		e := &serviceExporter{
 			opts:    opts,
 			service: &DefaultMetadataService{},
@@ -353,6 +355,7 @@ func Test_serviceExporterExport(t *testing.T) {
 			common.ServiceKey(constant.MetadataServiceName, opts.appName, version))
 		assert.Nil(t, err)
 		dubboProtocol.On("Export").Return(mockExporter).Once()
+		triProtocol.On("Export").Return(mockExporter).Once()
 		e := &serviceExporter{
 			opts:    opts,
 			service: &DefaultMetadataService{},

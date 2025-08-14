@@ -21,19 +21,15 @@ import (
 	"context"
 	"strconv"
 	"strings"
-)
 
-import (
 	"github.com/dubbogo/gost/log/logger"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/metadata/info"
+	perrors "github.com/pkg/errors"
+
 	tripleapi "dubbo.apache.org/dubbo-go/v3/metadata/triple_api/proto"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/protocolwrapper"
@@ -156,6 +152,8 @@ func (e *serviceExporter) Export() error {
 	} else {
 		port = strconv.Itoa(e.opts.port)
 	}
+
+	// Always export dubbo protocol for backward compatibility
 	if e.opts.protocol == constant.DefaultProtocol {
 		err := e.exportDubbo(port)
 		if err != nil {
@@ -163,10 +161,23 @@ func (e *serviceExporter) Export() error {
 		}
 	} else {
 		e.exportTripleV1(port)
-		// v2 only supports triple protocol
-		e.exportV2(port)
 	}
+
+	// Always export MetadataServiceV2 via tri protocol to fix Java 3.3.1 compatibility
+	// This addresses error code 1-39 when Java clients try to fetch metadata
+	e.exportV2(port)
+
 	return nil
+}
+
+// Unexport will unexport both dubbo and tri protocol metadata services
+func (e *serviceExporter) Unexport() {
+	if e.protocolExporter != nil {
+		e.protocolExporter.UnExport()
+	}
+	if e.v2Exporter != nil {
+		e.v2Exporter.UnExport()
+	}
 }
 
 func (e *serviceExporter) exportDubbo(port string) error {
@@ -228,9 +239,14 @@ func (e *serviceExporter) exportV2(port string) {
 		common.WithProtocol(constant.TriProtocol),
 		common.WithPort(port),
 		common.WithParamsValue(constant.GroupKey, e.opts.appName),
-		common.WithParamsValue(constant.VersionKey, "2.0.0"),
+		common.WithParamsValue(constant.VersionKey, constant.MetadataServiceV2Version),
 		common.WithInterface(constant.MetadataServiceV2Name),
 		common.WithMethods(strings.Split("getMetadataInfo,GetMetadataInfo", ",")),
+		// Ensure compatibility with Java metadata service protocol requirements
+		common.WithParamsValue(constant.SerializationKey, constant.Hessian2Serialization),
+		common.WithParamsValue(constant.ReleaseKey, constant.Version),
+		common.WithParamsValue(constant.MetadataTypeKey, e.opts.metadataType),
+		common.WithParamsValue(constant.SideKey, constant.SideProvider),
 		common.WithAttribute(constant.ServiceInfoKey, &MetadataServiceV2_ServiceInfo),
 		common.WithAttribute(constant.RpcServiceKey, v2),
 	)
