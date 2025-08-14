@@ -18,14 +18,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
-)
 
-import (
 	"google.golang.org/protobuf/proto"
-
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -241,6 +239,26 @@ func wrapIfUncoded(err error) error {
 		return nil
 	}
 	maybeCodedErr := wrapIfContextError(err)
+	// Map common network/dns errors to Unavailable for better ergonomics
+	if _, ok := asError(maybeCodedErr); !ok {
+		// unwrap *url.Error if present
+		if urlErr := new(url.Error); errors.As(maybeCodedErr, &urlErr) {
+			inner := urlErr.Unwrap()
+			if dnsErr := new(net.DNSError); errors.As(inner, &dnsErr) {
+				return NewError(CodeUnavailable, inner)
+			}
+			// fallback by message
+			if strings.Contains(strings.ToLower(inner.Error()), "no such host") {
+				return NewError(CodeUnavailable, inner)
+			}
+		}
+		if dnsErr := new(net.DNSError); errors.As(maybeCodedErr, &dnsErr) {
+			return NewError(CodeUnavailable, maybeCodedErr)
+		}
+		if strings.Contains(strings.ToLower(maybeCodedErr.Error()), "no such host") {
+			return NewError(CodeUnavailable, maybeCodedErr)
+		}
+	}
 	if _, ok := asError(maybeCodedErr); ok {
 		return maybeCodedErr
 	}
