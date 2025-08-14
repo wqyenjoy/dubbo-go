@@ -346,6 +346,7 @@ func (s *Server) handleServiceWithInfo(interfaceName string, invoker base.Invoke
 				},
 				opts...,
 			)
+        // stream cases omitted
 		case constant.CallClientStream:
 			_ = s.triServer.RegisterClientStreamHandler(
 				procedure,
@@ -399,6 +400,55 @@ func (s *Server) handleServiceWithInfo(interfaceName string, invoker base.Invoke
 			)
 		}
 	}
+
+    // Ensure $invoke is always exposed for generic invocation
+    genericProc := joinProcedure(interfaceName, constant.Generic)
+    _ = s.triServer.RegisterUnaryHandler(
+        genericProc,
+        func() any {
+            params := make([]any, 3)
+            params[0] = func(s string) *string { return &s }("methodName")
+            params[1] = &[]string{}
+            params[2] = &[]hessian.Object{}
+            return params
+        },
+        func(ctx context.Context, req *tri.Request) (*tri.Response, error) {
+            var args []any
+            if argsRaw, ok := req.Msg.([]any); ok {
+                for _, argRaw := range argsRaw {
+                    args = append(args, reflect.ValueOf(argRaw).Elem().Interface())
+                }
+            } else {
+                args = append(args, req.Msg)
+            }
+            attachments := generateAttachments(req.Header())
+            ctx = context.WithValue(ctx, constant.AttachmentKey, attachments)
+            capturedAttachments := make(map[string]any)
+            ctx = context.WithValue(ctx, constant.AttachmentServerKey, capturedAttachments)
+            invo := invocation.NewRPCInvocation(constant.Generic, args, attachments)
+            res := invoker.Invoke(ctx, invo)
+            var triResp *tri.Response
+            if existingResp, ok := res.Result().(*tri.Response); ok {
+                triResp = existingResp
+            } else {
+                triResp = tri.NewResponse([]any{res.Result()})
+            }
+            for k, v := range res.Attachments() {
+                switch val := v.(type) {
+                case string:
+                    triResp.Trailer().Set(k, val)
+                case []string:
+                    if len(val) > 0 {
+                        triResp.Trailer().Set(k, val[0])
+                    }
+                default:
+                    triResp.Header().Set(k, fmt.Sprintf("%v", val))
+                }
+            }
+            return triResp, res.Error()
+        },
+        opts...,
+    )
 }
 
 func (s *Server) saveServiceInfo(interfaceName string, info *common.ServiceInfo) {

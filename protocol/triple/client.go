@@ -255,6 +255,14 @@ func newClientManager(url *common.URL) (*clientManager, error) {
 			triClient := tri.NewClient(httpClient, triURL, cliOpts...)
 			triClients[method] = triClient
 		}
+		// ensure $invoke is available for generic invocation in non-idl/json/hessian mode as unary
+		if _, ok := triClients[constant.Generic]; !ok {
+			triURL, err := joinPath(baseTriURL, url.Interface(), constant.Generic)
+			if err != nil {
+				return nil, fmt.Errorf("JoinPath failed for base %s, interface %s, method %s", baseTriURL, url.Interface(), constant.Generic)
+			}
+			triClients[constant.Generic] = tri.NewClient(httpClient, triURL, cliOpts...)
+		}
 	} else {
 		// This branch is for the non-IDL mode, where we pass in the service solely
 		// for the purpose of using reflection to obtain all methods of the service.
@@ -273,6 +281,14 @@ func newClientManager(url *common.URL) (*clientManager, error) {
 			}
 			triClient := tri.NewClient(httpClient, triURL, cliOpts...)
 			triClients[methodName] = triClient
+		}
+		// always register $invoke for generic
+		if _, ok := triClients[constant.Generic]; !ok {
+			triURL, err := joinPath(baseTriURL, url.Interface(), constant.Generic)
+			if err != nil {
+				return nil, fmt.Errorf("JoinPath failed for base %s, interface %s, method %s", baseTriURL, url.Interface(), constant.Generic)
+			}
+			triClients[constant.Generic] = tri.NewClient(httpClient, triURL, cliOpts...)
 		}
 	}
 

@@ -169,6 +169,19 @@ func mergeAttachmentToOutgoing(ctx context.Context, inv base.Invocation) (contex
 func parseInvocation(ctx context.Context, url *common.URL, invocation base.Invocation) (string, []any, string, error) {
 	callTypeRaw, ok := invocation.GetAttribute(constant.CallTypeKey)
 	if !ok {
+		// Fallback for generic invocation: treat as unary and build raw params
+		if invocation.IsGenericInvocation() || invocation.MethodName() == constant.Generic || invocation.MethodName() == constant.GenericAsync {
+			inRaw := make([]any, 0, len(invocation.Arguments())+1)
+			// pass generic args as a slice to triple request
+			inRaw = append(inRaw, invocation.Arguments()...)
+			if invocation.Reply() != nil {
+				inRaw = append(inRaw, invocation.Reply())
+			}
+			method := invocation.MethodName()
+			// inject attachments as usual
+			parseAttachments(ctx, url, invocation)
+			return constant.CallUnary, inRaw, method, nil
+		}
 		return "", nil, "", errors.New("miss CallType in invocation to invoke TripleInvoker")
 	}
 	callType, ok := callTypeRaw.(string)
