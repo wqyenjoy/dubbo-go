@@ -243,7 +243,7 @@ func (e *serviceExporter) exportV2(port string) {
 		common.WithInterface(constant.MetadataServiceV2Name),
 		common.WithMethods(strings.Split("getMetadataInfo,GetMetadataInfo", ",")),
 		// Ensure compatibility with Java metadata service protocol requirements
-		common.WithParamsValue(constant.SerializationKey, constant.Hessian2Serialization),
+		// Note: tri protocol uses HTTP2/Protobuf, no hessian2 serialization needed
 		common.WithParamsValue(constant.ReleaseKey, constant.Version),
 		common.WithParamsValue(constant.MetadataTypeKey, e.opts.metadataType),
 		common.WithParamsValue(constant.SideKey, constant.SideProvider),
@@ -253,8 +253,9 @@ func (e *serviceExporter) exportV2(port string) {
 	proxyFactory := extension.GetProxyFactory("")
 	invoker := proxyFactory.GetInvoker(ivkURL)
 	e.v2Exporter = extension.GetProtocol(protocolwrapper.FILTER).Export(invoker)
-	// do not set, because it will override MetadataService
-	//exporter.metadataService.SetMetadataServiceURL(ivkURL)
+	// Set tri protocol MetadataServiceV2 as the primary metadata service URL
+	// This ensures Java 3.3.1 can discover and use tri protocol for metadata access
+	e.service.(*DefaultMetadataService).setMetadataServiceURL(ivkURL)
 }
 
 // serviceInvoker, if base on server.infoInvoker will cause cycle dependency, so we need to use this way
