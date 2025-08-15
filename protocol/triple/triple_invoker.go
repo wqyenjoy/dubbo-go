@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 
 	"dubbo.apache.org/dubbo-go/v3/common"
@@ -30,7 +29,9 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
 	"github.com/dubbogo/gost/log/logger"
 
-	tri "dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol"
+	ri "dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol"
+
+	hessian "github.com/apache/dubbo-go-hessian2"
 )
 
 var triAttachmentKeys = []string{
@@ -80,7 +81,7 @@ func (ti *TripleInvoker) Invoke(ctx context.Context, invocation base.Invocation)
 		return &result
 	}
 
-    callType, inRaw, method, err := parseInvocation(ctx, ti.GetURL(), invocation)
+	callType, inRaw, method, err := parseInvocation(ctx, ti.GetURL(), invocation)
 	if err != nil {
 		result.SetError(err)
 		return &result
@@ -92,27 +93,89 @@ func (ti *TripleInvoker) Invoke(ctx context.Context, invocation base.Invocation)
 		return &result
 	}
 
-    inRawLen := len(inRaw)
-    // build reqParams for generic fallback in non-idl mode
-    in := invocation.ParameterValues()
-    reqParams := make([]interface{}, 0, len(in))
-    if generic, ok := invocation.GetAttachment(constant.GenericKey); ok && generic == "true" {
-        for _, v := range in {
-            reqParams = append(reqParams, v.Interface())
-        }
-    }
+	inRawLen := len(inRaw)
+	// build reqParams for generic fallback in non-idl mode: use raw invocation arguments directly
+	reqParams := invocation.Arguments()
 
 	if !ti.clientManager.isIDL {
+		// 优先处理 $invoke：强制规范三元素形态并直达网络层
+		if method == constant.Generic {
+			var (
+				methodName string
+				types      []string
+				argv       []any
+			)
+			args := invocation.Arguments()
+			if len(args) >= 1 {
+				if s, ok := args[0].(string); ok {
+					methodName = s
+				}
+			}
+			if len(args) >= 2 {
+				switch v := args[1].(type) {
+				case []string:
+					types = v
+				case []any:
+					for _, e := range v {
+						if se, ok := e.(string); ok {
+							types = append(types, se)
+						}
+					}
+				default:
+					// no-op
+				}
+			}
+			if len(args) >= 3 {
+				switch v := args[2].(type) {
+				case []any:
+					argv = v
+				case []hessian.Object:
+					for _, e := range v {
+						argv = append(argv, e)
+					}
+				default:
+					if v != nil {
+						argv = append(argv, v)
+					}
+				}
+			}
+			req := []any{methodName, types, argv}
+			logger.Warnf("[TripleInvoker] normalized $invoke req len=%d, types=%v, argvLen=%d", len(req), types, len(argv))
+			// Prefer using caller-provided reply holder to ensure typed unmarshaling
+			replyHolder := invocation.Reply()
+			var localReply any
+			if replyHolder == nil {
+				replyHolder = &localReply
+			}
+			if err := ti.clientManager.callUnary(ctx, method, req, replyHolder); err != nil {
+				result.SetError(err)
+			} else {
+				// Set result only for completeness; caller typically reads from reply holder
+				if replyHolder == &localReply {
+					result.SetResult(localReply)
+				} else {
+					result.SetResult(replyHolder)
+				}
+			}
+			return &result
+		}
+
 		switch callType {
 		case constant.CallUnary:
 			// todo(DMwangnima): consider inRawLen == 0
 			if inRawLen != 0 {
 				if err := ti.clientManager.callUnary(ctx, method, inRaw[0:inRawLen-1], inRaw[inRawLen-1]); err != nil {
 					result.SetError(err)
+				} else {
+					result.SetResult(inRaw[inRawLen-1])
 				}
 			} else {
-				if err := ti.clientManager.callUnary(ctx, method, reqParams, reqParams); err != nil {
+				// generic fallback: three-element args [method, types, argv], reply holder separate
+				var reply any
+				if err := ti.clientManager.callUnary(ctx, method, reqParams, &reply); err != nil {
 					result.SetError(err)
+				} else {
+					result.SetResult(reply)
 				}
 			}
 		default:
@@ -159,16 +222,16 @@ func (ti *TripleInvoker) Invoke(ctx context.Context, invocation base.Invocation)
 func mergeAttachmentToOutgoing(ctx context.Context, inv base.Invocation) (context.Context, error) {
 	// Todo(finalt) Temporarily solve the problem that the timeout time is not valid
 	if timeout, ok := inv.GetAttachment(constant.TimeoutKey); ok {
-		ctx = context.WithValue(ctx, tri.TimeoutKey{}, timeout)
+		ctx = context.WithValue(ctx, ri.TimeoutKey{}, timeout)
 	}
 	for key, valRaw := range inv.Attachments() {
 		if str, ok := valRaw.(string); ok {
-			ctx = tri.AppendToOutgoingContext(ctx, key, str)
+			ctx = ri.AppendToOutgoingContext(ctx, key, str)
 			continue
 		}
 		if strs, ok := valRaw.([]string); ok {
 			for _, str := range strs {
-				ctx = tri.AppendToOutgoingContext(ctx, key, str)
+				ctx = ri.AppendToOutgoingContext(ctx, key, str)
 			}
 			continue
 		}
@@ -193,13 +256,13 @@ func parseInvocation(ctx context.Context, url *common.URL, invocation base.Invoc
 			method := invocation.MethodName()
 			// inject attachments as usual
 			parseAttachments(ctx, url, invocation)
-            return constant.CallUnary, inRaw, method, nil
+			return constant.CallUnary, inRaw, method, nil
 		}
-        return "", nil, "", errors.New("miss CallType in invocation to invoke TripleInvoker")
+		return "", nil, "", errors.New("miss CallType in invocation to invoke TripleInvoker")
 	}
 	callType, ok := callTypeRaw.(string)
 	if !ok {
-        return "", nil, "", fmt.Errorf("CallType should be string, but got %v", callTypeRaw)
+		return "", nil, "", fmt.Errorf("CallType should be string, but got %v", callTypeRaw)
 	}
 	// please refer to methods of client.Client or code generated by new triple for the usage of inRaw and inRawLen
 	// e.g. Client.CallUnary(... req, resp []interface, ...)
@@ -207,12 +270,12 @@ func parseInvocation(ctx context.Context, url *common.URL, invocation base.Invoc
 	inRaw := invocation.ParameterRawValues()
 	method := invocation.MethodName()
 	if method == "" {
-        return "", nil, "", errors.New("miss MethodName in invocation to invoke TripleInvoker")
+		return "", nil, "", errors.New("miss MethodName in invocation to invoke TripleInvoker")
 	}
 
 	parseAttachments(ctx, url, invocation)
 
-    return callType, inRaw, method, nil
+	return callType, inRaw, method, nil
 }
 
 // parseAttachments retrieves attachments from users passed-in and URL, then injects them into ctx

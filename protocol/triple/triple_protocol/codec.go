@@ -408,25 +408,9 @@ func (c *protoWrapperCodec) Unmarshal(binary []byte, message any) error {
 				return nil
 			}
 		}
-		// otherwise, treat first as the first argument, then decode remaining
+		// otherwise, treat first as the single response value
 		if len(params) > 0 {
-			if err := reflectResponse(first, params[0]); err != nil {
-				logger.Errorf("protoWrapperCodec.Unmarshal: first reflect error=%v", err)
-				return err
-			}
-			logger.Warnf("protoWrapperCodec.Unmarshal: first reflect ok index=0")
-		}
-		for i := 1; i < len(params); i++ {
-			val, err := dec.Decode()
-			if err != nil {
-				logger.Errorf("protoWrapperCodec.Unmarshal: seq Decode i=%d error=%v", i, err)
-				return err
-			}
-			if err := reflectResponse(val, params[i]); err != nil {
-				logger.Errorf("protoWrapperCodec.Unmarshal: seq reflect i=%d error=%v", i, err)
-				return err
-			}
-			logger.Warnf("protoWrapperCodec.Unmarshal: seq reflect ok i=%d", i)
+			return reflectResponse(first, params[0])
 		}
 		return nil
 	}
@@ -484,6 +468,8 @@ func (c *msgpackCodec) Unmarshal(binary []byte, message any) error {
 	decoder := msgpack.NewDecoderBytes(binary, new(msgpack.MsgpackHandle))
 	return decoder.Decode(message)
 }
+
+// removed PlainJSONCodec
 
 // readOnlyCodecs is a read-only interface to a map of named codecs.
 type readOnlyCodecs interface {
@@ -631,7 +617,18 @@ func getArgType(v any) string {
 
 func reflectResponse(in any, out any) error {
 	if in == nil {
-		return perrors.Errorf("@in is nil")
+		// 容忍 nil 入参：将 out 置为其零值
+		if out != nil {
+			ov := reflect.ValueOf(out)
+			if ov.IsValid() && ov.Kind() == reflect.Ptr {
+				ov = ov.Elem()
+				if ov.IsValid() && ov.CanSet() {
+					ov.Set(reflect.Zero(ov.Type()))
+					return nil
+				}
+			}
+		}
+		return nil
 	}
 
 	if out == nil {
@@ -639,6 +636,24 @@ func reflectResponse(in any, out any) error {
 	}
 	if reflect.TypeOf(out).Kind() != reflect.Ptr {
 		return perrors.Errorf("@out should be a pointer")
+	}
+
+	// Special handling: if out is interface{} whose dynamic value is a non-nil pointer,
+	// write directly into the pointed concrete value instead of replacing the interface.
+	{
+		ov := reflect.ValueOf(out)
+		if ov.IsValid() && ov.Kind() == reflect.Ptr {
+			inner := ov.Elem()
+			if inner.IsValid() && inner.Kind() == reflect.Interface {
+				dyn := inner.Elem()
+				if dyn.IsValid() && dyn.Kind() == reflect.Ptr && !dyn.IsNil() {
+					inVal := hessian.EnsurePackValue(in)
+					dest := dyn.Elem()
+					hessian.SetValue(dest, inVal)
+					return nil
+				}
+			}
+		}
 	}
 
 	inValue := hessian.EnsurePackValue(in)
