@@ -19,18 +19,12 @@ package generic
 
 import (
 	"context"
+	"reflect"
 	"sync"
-)
 
-import (
 	hessian "github.com/apache/dubbo-go-hessian2"
-
 	"github.com/dubbogo/gost/log/logger"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
@@ -38,6 +32,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/invocation"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
+	perrors "github.com/pkg/errors"
 )
 
 var (
@@ -65,11 +60,34 @@ func (f *genericServiceFilter) Invoke(ctx context.Context, invoker base.Invoker,
 		return invoker.Invoke(ctx, inv)
 	}
 
+
+
 	// get real invocation info from the generic invocation
 	mtdName := inv.Arguments()[0].(string)
 	// types are not required in dubbo-go, for dubbo-go client to dubbo-go server, types could be nil
 	types := inv.Arguments()[1]
-	args := inv.Arguments()[2].([]hessian.Object)
+	// be tolerant to []any / []interface{} inputs from triple generic $invoke
+	var args []hessian.Object
+	switch v := inv.Arguments()[2].(type) {
+	case []hessian.Object:
+		args = v
+	case []any:
+		args = make([]hessian.Object, len(v))
+		for i := range v {
+			args[i] = v[i]
+		}
+	default:
+		rv := reflect.ValueOf(v)
+		if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
+			l := rv.Len()
+			args = make([]hessian.Object, l)
+			for i := 0; i < l; i++ {
+				args[i] = rv.Index(i).Interface()
+			}
+		} else {
+			return &result.RPCResult{Err: perrors.Errorf("invalid generic argv type: %T", v)}
+		}
+	}
 
 	logger.Errorf(`received a generic invocation:
 		MethodName: %s,

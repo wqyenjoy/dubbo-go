@@ -24,21 +24,9 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-)
-
-import (
-	hessian "github.com/apache/dubbo-go-hessian2"
 
 	"github.com/dubbogo/gost/log/logger"
 
-	grpc_go "github.com/dubbogo/grpc-go"
-
-	"github.com/dustin/go-humanize"
-
-	"google.golang.org/grpc"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config"
@@ -47,6 +35,12 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/dubbo3"
 	"dubbo.apache.org/dubbo-go/v3/protocol/invocation"
+	grpc_go "github.com/dubbogo/grpc-go"
+	"github.com/dustin/go-humanize"
+	"google.golang.org/grpc"
+
+	hessian "github.com/apache/dubbo-go-hessian2"
+
 	dubbotls "dubbo.apache.org/dubbo-go/v3/tls"
 
 	tri "dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol"
@@ -328,7 +322,7 @@ func (s *Server) handleServiceWithInfo(interfaceName string, invoker base.Invoke
 						triResp = existingResp
 					} else {
 						// please refer to proxy/proxy_factory/ProxyInvoker.Invoke
-						triResp = tri.NewResponse([]any{res.Result()})
+						triResp = tri.NewResponse(res.Result())
 					}
 					for k, v := range res.Attachments() {
 						switch val := v.(type) {
@@ -346,7 +340,7 @@ func (s *Server) handleServiceWithInfo(interfaceName string, invoker base.Invoke
 				},
 				opts...,
 			)
-        // stream cases omitted
+			// stream cases omitted
 		case constant.CallClientStream:
 			_ = s.triServer.RegisterClientStreamHandler(
 				procedure,
@@ -362,7 +356,7 @@ func (s *Server) handleServiceWithInfo(interfaceName string, invoker base.Invoke
 						return triResp, res.Error()
 					}
 					// please refer to proxy/proxy_factory/ProxyInvoker.Invoke
-					triResp := tri.NewResponse([]any{res.Result()})
+					triResp := tri.NewResponse(res.Result())
 					return triResp, res.Error()
 				},
 				opts...,
@@ -401,54 +395,134 @@ func (s *Server) handleServiceWithInfo(interfaceName string, invoker base.Invoke
 		}
 	}
 
-    // Ensure $invoke is always exposed for generic invocation
-    genericProc := joinProcedure(interfaceName, constant.Generic)
-    _ = s.triServer.RegisterUnaryHandler(
-        genericProc,
-        func() any {
-            params := make([]any, 3)
-            params[0] = func(s string) *string { return &s }("methodName")
-            params[1] = &[]string{}
-            params[2] = &[]hessian.Object{}
-            return params
-        },
-        func(ctx context.Context, req *tri.Request) (*tri.Response, error) {
-            var args []any
-            if argsRaw, ok := req.Msg.([]any); ok {
-                for _, argRaw := range argsRaw {
-                    args = append(args, reflect.ValueOf(argRaw).Elem().Interface())
-                }
-            } else {
-                args = append(args, req.Msg)
-            }
-            attachments := generateAttachments(req.Header())
-            ctx = context.WithValue(ctx, constant.AttachmentKey, attachments)
-            capturedAttachments := make(map[string]any)
-            ctx = context.WithValue(ctx, constant.AttachmentServerKey, capturedAttachments)
-            invo := invocation.NewRPCInvocation(constant.Generic, args, attachments)
-            res := invoker.Invoke(ctx, invo)
-            var triResp *tri.Response
-            if existingResp, ok := res.Result().(*tri.Response); ok {
-                triResp = existingResp
-            } else {
-                triResp = tri.NewResponse([]any{res.Result()})
-            }
-            for k, v := range res.Attachments() {
-                switch val := v.(type) {
-                case string:
-                    triResp.Trailer().Set(k, val)
-                case []string:
-                    if len(val) > 0 {
-                        triResp.Trailer().Set(k, val[0])
-                    }
-                default:
-                    triResp.Header().Set(k, fmt.Sprintf("%v", val))
-                }
-            }
-            return triResp, res.Error()
-        },
-        opts...,
-    )
+	// Ensure $invoke is always exposed for generic invocation
+	genericProc := joinProcedure(interfaceName, constant.Generic)
+	_ = s.triServer.RegisterUnaryHandler(
+		genericProc,
+		func() any {
+			params := make([]any, 3)
+			params[0] = func(s string) *string { return &s }("methodName")
+			params[1] = &[]string{}
+			params[2] = &[]any{}
+			return params
+		},
+		func(ctx context.Context, req *tri.Request) (*tri.Response, error) {
+			var args []any
+			if argsRaw, ok := req.Msg.([]any); ok {
+				for _, argRaw := range argsRaw {
+					args = append(args, reflect.ValueOf(argRaw).Elem().Interface())
+				}
+			} else {
+				args = append(args, req.Msg)
+			}
+
+			// normalize $invoke args: [methodName string, types []string, argv []any]
+			if len(args) < 3 {
+				// pad to length 3
+				for len(args) < 3 {
+					args = append(args, nil)
+				}
+			}
+			// methodName ensure string
+			if _, ok := args[0].(string); !ok {
+				if ps, ok := args[0].(*string); ok && ps != nil {
+					args[0] = *ps
+				} else {
+					args[0] = fmt.Sprint(args[0])
+				}
+			}
+			// types ensure []string
+			{
+				raw := args[1]
+				switch tv := raw.(type) {
+				case []string:
+					// already good
+					args[1] = tv
+				case []any:
+					converted := make([]string, len(tv))
+					for i := range tv {
+						converted[i] = fmt.Sprint(tv[i])
+					}
+					args[1] = converted
+				default:
+					rv := reflect.ValueOf(raw)
+					if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
+						l := rv.Len()
+						converted := make([]string, l)
+						for i := 0; i < l; i++ {
+							converted[i] = fmt.Sprint(rv.Index(i).Interface())
+						}
+						args[1] = converted
+					} else if s, ok := raw.(string); ok {
+						args[1] = []string{s}
+					} else if raw == nil {
+						args[1] = []string{}
+					} else {
+						args[1] = []string{fmt.Sprint(raw)}
+					}
+				}
+			}
+			// argv ensure []any
+			{
+				raw := args[2]
+				switch av := raw.(type) {
+				case []any:
+					args[2] = av
+				default:
+					rv := reflect.ValueOf(raw)
+					if !rv.IsValid() || raw == nil {
+						args[2] = []any{}
+					} else if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+						l := rv.Len()
+						converted := make([]any, l)
+						for i := 0; i < l; i++ {
+							converted[i] = rv.Index(i).Interface()
+						}
+						args[2] = converted
+					} else {
+						args[2] = []any{raw}
+					}
+				}
+			}
+			// enforce argv to []hessian.Object so that genericServiceFilter can accept it without type assertion panic
+			{
+				if av, ok := args[2].([]any); ok {
+					obj := make([]hessian.Object, len(av))
+					for i := range av {
+						obj[i] = av[i]
+					}
+					args[2] = obj
+				}
+			}
+
+			attachments := generateAttachments(req.Header())
+			ctx = context.WithValue(ctx, constant.AttachmentKey, attachments)
+			capturedAttachments := make(map[string]any)
+			ctx = context.WithValue(ctx, constant.AttachmentServerKey, capturedAttachments)
+			invo := invocation.NewRPCInvocation(constant.Generic, args, attachments)
+			res := invoker.Invoke(ctx, invo)
+			var triResp *tri.Response
+			if existingResp, ok := res.Result().(*tri.Response); ok {
+				triResp = existingResp
+			} else {
+				triResp = tri.NewResponse(res.Result())
+			}
+			for k, v := range res.Attachments() {
+				switch val := v.(type) {
+				case string:
+					triResp.Trailer().Set(k, val)
+				case []string:
+					if len(val) > 0 {
+						triResp.Trailer().Set(k, val[0])
+					}
+				default:
+					triResp.Header().Set(k, fmt.Sprintf("%v", val))
+				}
+			}
+			return triResp, res.Error()
+		},
+		opts...,
+	)
 }
 
 func (s *Server) saveServiceInfo(interfaceName string, info *common.ServiceInfo) {
@@ -576,7 +650,7 @@ func createServiceInfoWithReflection(svc common.RPCService) *common.ServiceInfo 
 			// params must be pointer
 			params[0] = func(s string) *string { return &s }("methodName") // methodName *string
 			params[1] = &[]string{}                                        // argv type  *[]string
-			params[2] = &[]hessian.Object{}                                // argv       *[]hessian.Object
+			params[2] = &[]any{}                                           // argv       *[]any
 			return params
 		},
 	}

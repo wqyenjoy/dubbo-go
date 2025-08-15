@@ -21,26 +21,17 @@ import (
 	"fmt"
 	"reflect"
 	"time"
-)
 
-import (
 	hessian "github.com/apache/dubbo-go-hessian2"
 
 	perrors "github.com/pkg/errors"
 
-	msgpack "github.com/ugorji/go/codec"
-
-	"github.com/dubbogo/gost/log/logger"
-
-	"google.golang.org/protobuf/encoding/protojson"
-
-	"google.golang.org/protobuf/proto"
-
-	"google.golang.org/protobuf/runtime/protoiface"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/interoperability"
+	"github.com/dubbogo/gost/log/logger"
+	msgpack "github.com/ugorji/go/codec"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/runtime/protoiface"
 )
 
 const (
@@ -201,66 +192,246 @@ func (c *protoWrapperCodec) Name() string {
 }
 
 func (c *protoWrapperCodec) Marshal(message any) ([]byte, error) {
-	var reqs []any
-	var ok bool
-	reqs, ok = message.([]any)
-	if !ok {
-		reqs = []any{message}
-	}
-
-	reqsLen := len(reqs)
-	logger.Errorf("reqsLen: %v", reqsLen)
-	reqsBytes := make([][]byte, reqsLen)
-	reqsTypes := make([]string, reqsLen)
-	for i, req := range reqs {
-		reqBytes, err := c.innerCodec.Marshal(req)
-		if err != nil {
-			return nil, err
+	// debug: log message dynamic type
+	logger.Warnf("protoWrapperCodec.Marshal: msg type=%T", message)
+	// If the message is a slice of args, wrap as TripleRequestWrapper
+	if reqs, ok := message.([]any); ok {
+		logger.Warnf("protoWrapperCodec.Marshal: detected []any len=%d", len(reqs))
+		for i := range reqs {
+			logger.Warnf("protoWrapperCodec.Marshal: arg[%d] type=%T", i, reqs[i])
 		}
-		reqsBytes[i] = reqBytes
-		reqsTypes[i] = getArgType(req)
+		// flatten nested single-arg slice: []any{ []any{...} } → []any{...}
+		if len(reqs) == 1 {
+			if inner, ok2 := reqs[0].([]any); ok2 {
+				logger.Warnf("protoWrapperCodec.Marshal: flatten nested args len=%d", len(inner))
+				reqs = inner
+			} else {
+				// also support []interface{} concrete type
+				rv := reflect.ValueOf(reqs[0])
+				if rv.IsValid() && rv.Kind() == reflect.Slice {
+					innerLen := rv.Len()
+					flatten := make([]any, innerLen)
+					for i := 0; i < innerLen; i++ {
+						flatten[i] = rv.Index(i).Interface()
+					}
+					logger.Warnf("protoWrapperCodec.Marshal: flatten generic slice len=%d", innerLen)
+					reqs = flatten
+				}
+			}
+		}
+		reqsLen := len(reqs)
+		reqsBytes := make([][]byte, reqsLen)
+		reqsTypes := make([]string, reqsLen)
+		for i, req := range reqs {
+			b, err := c.innerCodec.Marshal(req)
+			if err != nil {
+				return nil, err
+			}
+			reqsBytes[i] = b
+			reqsTypes[i] = getArgType(req)
+		}
+		wrapperReq := &interoperability.TripleRequestWrapper{
+			SerializeType: c.innerCodec.Name(),
+			Args:          reqsBytes,
+			ArgTypes:      reqsTypes,
+		}
+		logger.Warnf("protoWrapperCodec.Marshal: request wrapper serialize=%s args=%d", wrapperReq.SerializeType, len(wrapperReq.Args))
+		return proto.Marshal(wrapperReq)
 	}
-
-	wrapperReq := &interoperability.TripleRequestWrapper{
+	// Also support []interface{} and arbitrary slice kinds by converting to []any
+	if ifaces, ok := message.([]interface{}); ok {
+		logger.Warnf("protoWrapperCodec.Marshal: detected []interface{} len=%d", len(ifaces))
+		reqs := make([]any, len(ifaces))
+		for i := range ifaces {
+			reqs[i] = ifaces[i]
+		}
+		reqsLen := len(reqs)
+		reqsBytes := make([][]byte, reqsLen)
+		reqsTypes := make([]string, reqsLen)
+		for i, req := range reqs {
+			b, err := c.innerCodec.Marshal(req)
+			if err != nil {
+				return nil, err
+			}
+			reqsBytes[i] = b
+			reqsTypes[i] = getArgType(req)
+		}
+		wrapperReq := &interoperability.TripleRequestWrapper{
+			SerializeType: c.innerCodec.Name(),
+			Args:          reqsBytes,
+			ArgTypes:      reqsTypes,
+		}
+		logger.Warnf("protoWrapperCodec.Marshal: request wrapper ([]interface{}) serialize=%s args=%d", wrapperReq.SerializeType, len(wrapperReq.Args))
+		return proto.Marshal(wrapperReq)
+	}
+	if rv := reflect.ValueOf(message); rv.IsValid() && rv.Kind() == reflect.Slice {
+		logger.Warnf("protoWrapperCodec.Marshal: detected reflect slice len=%d elem=%s", rv.Len(), rv.Type().Elem().String())
+		l := rv.Len()
+		reqs := make([]any, l)
+		for i := 0; i < l; i++ {
+			reqs[i] = rv.Index(i).Interface()
+		}
+		reqsLen := len(reqs)
+		reqsBytes := make([][]byte, reqsLen)
+		reqsTypes := make([]string, reqsLen)
+		for i, req := range reqs {
+			b, err := c.innerCodec.Marshal(req)
+			if err != nil {
+				return nil, err
+			}
+			reqsBytes[i] = b
+			reqsTypes[i] = getArgType(req)
+		}
+		wrapperReq := &interoperability.TripleRequestWrapper{
+			SerializeType: c.innerCodec.Name(),
+			Args:          reqsBytes,
+			ArgTypes:      reqsTypes,
+		}
+		logger.Warnf("protoWrapperCodec.Marshal: request wrapper (reflect slice) serialize=%s args=%d", wrapperReq.SerializeType, len(wrapperReq.Args))
+		return proto.Marshal(wrapperReq)
+	}
+	// Force-wrap fallback: if message looks like a slice but above branches missed, never send Args=0
+	if arr, ok := message.([]interface{}); ok && len(arr) == 0 {
+		logger.Warnf("protoWrapperCodec.Marshal: force-wrap empty []interface{} to avoid Args=0")
+		wrapperReq := &interoperability.TripleRequestWrapper{
+			SerializeType: c.innerCodec.Name(),
+			Args:          [][]byte{},
+			ArgTypes:      []string{},
+		}
+		return proto.Marshal(wrapperReq)
+	}
+	// Otherwise, wrap as TripleResponseWrapper
+	b, err := c.innerCodec.Marshal(message)
+	if err != nil {
+		return nil, err
+	}
+	wrapperResp := &interoperability.TripleResponseWrapper{
 		SerializeType: c.innerCodec.Name(),
-		Args:          reqsBytes,
-		ArgTypes:      reqsTypes,
+		Data:          b,
+		Type:          getArgType(message),
 	}
-
-	logger.Info("wrapperReq ", wrapperReq)
-
-	return proto.Marshal(wrapperReq)
+	return proto.Marshal(wrapperResp)
 }
 
 func (c *protoWrapperCodec) Unmarshal(binary []byte, message any) error {
+	// Try RequestWrapper first (request path)
 	var params []any
-	var ok bool
-	params, ok = message.([]any)
-	if !ok {
+	isParamsSlice := false
+	if ps, ok := message.([]any); ok {
+		params = ps
+		isParamsSlice = true
+	} else {
 		params = []any{message}
 	}
 
-	logger.Errorf("params len: %v", len(params))
+	// Try RequestWrapper
 	var wrapperReq interoperability.TripleRequestWrapper
-	if err := proto.Unmarshal(binary, &wrapperReq); err != nil {
-		return err
-	}
-	logger.Errorf("wrapperReq: %+v", wrapperReq)
-	// len(params) is correct.
-	// but Unmarshal doesn't work.
-	if len(wrapperReq.Args) != len(params) {
-		return fmt.Errorf("protoWrapperCodec request params len is %d, but has %d actually",
-			len(wrapperReq.Args), len(params))
-	}
-
-	for i, arg := range wrapperReq.Args {
-		logger.Warnf("params[%v] type: %T", i, params[i])
-		if err := c.innerCodec.Unmarshal(arg, params[i]); err != nil {
-			return err
+	if err := proto.Unmarshal(binary, &wrapperReq); err == nil {
+		logger.Warnf("protoWrapperCodec.Unmarshal: request wrapper parsed, serialize=%s, args=%d, expect=%d", wrapperReq.SerializeType, len(wrapperReq.Args), len(params))
+		if len(wrapperReq.Args) == len(params) && len(wrapperReq.Args) > 0 {
+			for i, arg := range wrapperReq.Args {
+				logger.Warnf("protoWrapperCodec.Unmarshal: decoding arg[%d] into %T", i, params[i])
+				if err := c.innerCodec.Unmarshal(arg, params[i]); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 	}
 
-	return nil
+	// If target is []any (request), skip ResponseWrapper branch to avoid misrouting
+	if isParamsSlice {
+		// skip response wrapper path
+	} else {
+		// Defensive: try ResponseWrapper (response path)
+		var resp interoperability.TripleResponseWrapper
+		if err := proto.Unmarshal(binary, &resp); err == nil && len(resp.Data) > 0 {
+			// If inner codec is hessian2 and target is []any, decode Data as list/seq
+			if _, ok := c.innerCodec.(*hessian2Codec); ok {
+				if ps, isSlice := message.([]any); isSlice {
+					dec := hessian.NewDecoder(resp.Data)
+					first, err := dec.Decode()
+					if err != nil {
+						return err
+					}
+					if rv := reflect.ValueOf(first); rv.IsValid() && rv.Kind() == reflect.Slice && rv.Len() == len(ps) {
+						for i := 0; i < rv.Len(); i++ {
+							if err := reflectResponse(rv.Index(i).Interface(), ps[i]); err != nil {
+								return err
+							}
+						}
+						return nil
+					}
+					if len(ps) > 0 {
+						if err := reflectResponse(first, ps[0]); err != nil {
+							return err
+						}
+						for i := 1; i < len(ps); i++ {
+							val, err := dec.Decode()
+							if err != nil {
+								return err
+							}
+							if err := reflectResponse(val, ps[i]); err != nil {
+								return err
+							}
+						}
+						return nil
+					}
+				}
+				// Not a []any target: just decode inner data normally
+				return c.innerCodec.Unmarshal(resp.Data, message)
+			}
+			return c.innerCodec.Unmarshal(resp.Data, message)
+		}
+	}
+
+	// Fallback: Non-wrapper payload with Hessian2; decode sequentially
+	if _, ok := c.innerCodec.(*hessian2Codec); ok {
+		logger.Warnf("protoWrapperCodec.Unmarshal: hessian2 fallback, params=%d", len(params))
+		dec := hessian.NewDecoder(binary)
+		first, err := dec.Decode()
+		if err != nil {
+			logger.Errorf("protoWrapperCodec.Unmarshal: first Decode error=%v", err)
+			return err
+		}
+		logger.Warnf("protoWrapperCodec.Unmarshal: first type=%T", first)
+		if rv := reflect.ValueOf(first); rv.IsValid() && rv.Kind() == reflect.Slice {
+			logger.Warnf("protoWrapperCodec.Unmarshal: first slice len=%d expect=%d", rv.Len(), len(params))
+			if rv.Len() == len(params) {
+				for i := 0; i < rv.Len(); i++ {
+					if err := reflectResponse(rv.Index(i).Interface(), params[i]); err != nil {
+						logger.Errorf("protoWrapperCodec.Unmarshal: slice[%d] reflect error=%v", i, err)
+						return err
+					}
+					logger.Warnf("protoWrapperCodec.Unmarshal: slice[%d] reflect ok", i)
+				}
+				return nil
+			}
+		}
+		// otherwise, treat first as the first argument, then decode remaining
+		if len(params) > 0 {
+			if err := reflectResponse(first, params[0]); err != nil {
+				logger.Errorf("protoWrapperCodec.Unmarshal: first reflect error=%v", err)
+				return err
+			}
+			logger.Warnf("protoWrapperCodec.Unmarshal: first reflect ok index=0")
+		}
+		for i := 1; i < len(params); i++ {
+			val, err := dec.Decode()
+			if err != nil {
+				logger.Errorf("protoWrapperCodec.Unmarshal: seq Decode i=%d error=%v", i, err)
+				return err
+			}
+			if err := reflectResponse(val, params[i]); err != nil {
+				logger.Errorf("protoWrapperCodec.Unmarshal: seq reflect i=%d error=%v", i, err)
+				return err
+			}
+			logger.Warnf("protoWrapperCodec.Unmarshal: seq reflect ok i=%d", i)
+		}
+		return nil
+	}
+	// Last resort: try inner codec on whole payload
+	return c.innerCodec.Unmarshal(binary, message)
 }
 
 func newProtoWrapperCodec(innerCodec Codec) *protoWrapperCodec {
@@ -499,21 +670,49 @@ func copySlice(inSlice, outSlice reflect.Value) error {
 	if inSlice.Kind() != reflect.Slice {
 		return perrors.Errorf("@in is not slice, but %v", inSlice.Kind())
 	}
-
 	for outSlice.Kind() == reflect.Ptr {
 		outSlice = outSlice.Elem()
+	}
+
+	// Fallback: target is not a slice, avoid panic and set value directly
+	if outSlice.Kind() != reflect.Slice {
+		inIface := inSlice.Interface()
+		inVal := hessian.EnsurePackValue(inIface)
+		hessian.SetValue(outSlice, inVal)
+		return nil
 	}
 
 	size := inSlice.Len()
 	outSlice.Set(reflect.MakeSlice(outSlice.Type(), size, size))
 
+	outElemType := outSlice.Type().Elem()
 	for i := 0; i < size; i++ {
 		inSliceValue := inSlice.Index(i)
-		if !inSliceValue.Type().AssignableTo(outSlice.Index(i).Type()) {
-			return perrors.Errorf("in element type [%s] can not assign to out element type [%s]",
-				inSliceValue.Type().String(), outSlice.Type().String())
+		// Fast path: directly assignable
+		if inSliceValue.Type().AssignableTo(outElemType) {
+			// Convert to ensure exact type match when assignable
+			if inSliceValue.Type() != outElemType && inSliceValue.Type().ConvertibleTo(outElemType) {
+				outSlice.Index(i).Set(inSliceValue.Convert(outElemType))
+			} else {
+				outSlice.Index(i).Set(inSliceValue)
+			}
+			continue
 		}
-		outSlice.Index(i).Set(inSliceValue)
+		// Lenient path: try conversion via hessian helpers
+		outElem := reflect.New(outElemType).Elem()
+		inPacked := hessian.EnsurePackValue(inSliceValue.Interface())
+		hessian.SetValue(outElem, inPacked)
+		if outElem.IsValid() && outElem.Type() == outElemType {
+			outSlice.Index(i).Set(outElem)
+			continue
+		}
+		// special-case string destination
+		if outElemType.Kind() == reflect.String {
+			outSlice.Index(i).Set(reflect.ValueOf(fmt.Sprint(inSliceValue.Interface())))
+			continue
+		}
+		return perrors.Errorf("in element type [%s] can not assign to out element type [%s]",
+			inSliceValue.Type().String(), outElemType.String())
 	}
 
 	return nil
