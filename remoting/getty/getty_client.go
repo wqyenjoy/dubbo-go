@@ -21,28 +21,23 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-)
 
-import (
 	getty "github.com/apache/dubbo-getty"
-
 	"github.com/dubbogo/gost/log/logger"
+
 	gxsync "github.com/dubbogo/gost/sync"
+
 	gxtime "github.com/dubbogo/gost/time"
 
-	perrors "github.com/pkg/errors"
-
-	"go.uber.org/atomic"
-
-	"gopkg.in/yaml.v2"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config"
 	"dubbo.apache.org/dubbo-go/v3/global"
 	"dubbo.apache.org/dubbo-go/v3/remoting"
+	perrors "github.com/pkg/errors"
+	"go.uber.org/atomic"
+	"gopkg.in/yaml.v2"
+
 	dubbotls "dubbo.apache.org/dubbo-go/v3/tls"
 )
 
@@ -226,8 +221,10 @@ func (c *Client) Request(request *remoting.Request, timeout time.Duration, respo
 		if sendLen != 0 && totalLen != sendLen {
 			logger.Warnf("start to close the session at request because %d of %d bytes data is sent success. err:%+v", sendLen, totalLen, err)
 		}
-		// close the problematic session to avoid reusing a broken connection
-		go session.Close()
+		// detach the session from pool first to avoid it being selected again
+		c.detachSession(session)
+		// then close the problematic session synchronously to avoid reuse
+		session.Close()
 		return perrors.WithStack(err)
 	}
 
@@ -285,10 +282,27 @@ func (c *Client) selectSession(addr string) (*gettyRPCClient, getty.Session, err
 }
 
 func (c *Client) transfer(session getty.Session, request *remoting.Request, timeout time.Duration) (int, int, error) {
-	// Use configured tcp write timeout for write operation to avoid coupling to RPC request timeout
+	// Choose the smaller one between tcp write timeout and per-call timeout budget
 	writeTimeout := c.conf.GettySessionParam.tcpWriteTimeout
+	if writeTimeout <= 0 {
+		writeTimeout = 5 * time.Second
+	}
+	if timeout > 0 && timeout < writeTimeout {
+		writeTimeout = timeout
+	}
 	totalLen, sendLen, err := session.WritePkg(request, writeTimeout)
 	return totalLen, sendLen, perrors.WithStack(err)
+}
+
+// detachSession removes the provided session from client's available session list
+// to avoid being selected again during the closing window.
+func (c *Client) detachSession(session getty.Session) {
+	c.gettyClientMux.RLock()
+	gc := c.gettyClient
+	c.gettyClientMux.RUnlock()
+	if gc != nil && session != nil {
+		gc.removeSession(session)
+	}
 }
 
 func (c *Client) resetRpcConn() {
