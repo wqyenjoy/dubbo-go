@@ -225,8 +225,9 @@ func (c *Client) Request(request *remoting.Request, timeout time.Duration, respo
 	if totalLen, sendLen, err = c.transfer(session, request, timeout); err != nil {
 		if sendLen != 0 && totalLen != sendLen {
 			logger.Warnf("start to close the session at request because %d of %d bytes data is sent success. err:%+v", sendLen, totalLen, err)
-			go c.Close()
 		}
+		// close the problematic session to avoid reusing a broken connection
+		go session.Close()
 		return perrors.WithStack(err)
 	}
 
@@ -284,7 +285,9 @@ func (c *Client) selectSession(addr string) (*gettyRPCClient, getty.Session, err
 }
 
 func (c *Client) transfer(session getty.Session, request *remoting.Request, timeout time.Duration) (int, int, error) {
-	totalLen, sendLen, err := session.WritePkg(request, timeout)
+	// Use configured tcp write timeout for write operation to avoid coupling to RPC request timeout
+	writeTimeout := c.conf.GettySessionParam.tcpWriteTimeout
+	totalLen, sendLen, err := session.WritePkg(request, writeTimeout)
 	return totalLen, sendLen, perrors.WithStack(err)
 }
 
