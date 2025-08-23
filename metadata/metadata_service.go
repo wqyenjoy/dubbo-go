@@ -156,6 +156,8 @@ func (e *serviceExporter) Export() error {
 	} else {
 		port = strconv.Itoa(e.opts.port)
 	}
+
+	// Always export dubbo protocol for backward compatibility
 	if e.opts.protocol == constant.DefaultProtocol {
 		err := e.exportDubbo(port)
 		if err != nil {
@@ -163,10 +165,23 @@ func (e *serviceExporter) Export() error {
 		}
 	} else {
 		e.exportTripleV1(port)
-		// v2 only supports triple protocol
-		e.exportV2(port)
 	}
+
+	// Always export MetadataServiceV2 via tri protocol to fix Java 3.3.1 compatibility
+	// This addresses error code 1-39 when Java clients try to fetch metadata
+	e.exportV2(port)
+
 	return nil
+}
+
+// Unexport will unexport both dubbo and tri protocol metadata services
+func (e *serviceExporter) Unexport() {
+	if e.protocolExporter != nil {
+		e.protocolExporter.UnExport()
+	}
+	if e.v2Exporter != nil {
+		e.v2Exporter.UnExport()
+	}
 }
 
 func (e *serviceExporter) exportDubbo(port string) error {
@@ -228,17 +243,23 @@ func (e *serviceExporter) exportV2(port string) {
 		common.WithProtocol(constant.TriProtocol),
 		common.WithPort(port),
 		common.WithParamsValue(constant.GroupKey, e.opts.appName),
-		common.WithParamsValue(constant.VersionKey, "2.0.0"),
+		common.WithParamsValue(constant.VersionKey, constant.MetadataServiceV2Version),
 		common.WithInterface(constant.MetadataServiceV2Name),
 		common.WithMethods(strings.Split("getMetadataInfo,GetMetadataInfo", ",")),
+		// Ensure compatibility with Java metadata service protocol requirements
+		// Note: tri protocol uses HTTP2/Protobuf, no hessian2 serialization needed
+		common.WithParamsValue(constant.ReleaseKey, constant.Version),
+		common.WithParamsValue(constant.MetadataTypeKey, e.opts.metadataType),
+		common.WithParamsValue(constant.SideKey, constant.SideProvider),
 		common.WithAttribute(constant.ServiceInfoKey, &MetadataServiceV2_ServiceInfo),
 		common.WithAttribute(constant.RpcServiceKey, v2),
 	)
 	proxyFactory := extension.GetProxyFactory("")
 	invoker := proxyFactory.GetInvoker(ivkURL)
 	e.v2Exporter = extension.GetProtocol(protocolwrapper.FILTER).Export(invoker)
-	// do not set, because it will override MetadataService
-	//exporter.metadataService.SetMetadataServiceURL(ivkURL)
+	// Set tri protocol MetadataServiceV2 as the primary metadata service URL
+	// This ensures Java 3.3.1 can discover and use tri protocol for metadata access
+	e.service.(*DefaultMetadataService).setMetadataServiceURL(ivkURL)
 }
 
 // serviceInvoker, if base on server.infoInvoker will cause cycle dependency, so we need to use this way
