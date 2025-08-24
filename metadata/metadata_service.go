@@ -21,19 +21,15 @@ import (
 	"context"
 	"strconv"
 	"strings"
-)
 
-import (
 	"github.com/dubbogo/gost/log/logger"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/metadata/info"
+	perrors "github.com/pkg/errors"
+
 	tripleapi "dubbo.apache.org/dubbo-go/v3/metadata/triple_api/proto"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/protocolwrapper"
@@ -319,11 +315,14 @@ func (mtsV2 *MetadataServiceV2) GetMetadataInfo(ctx context.Context, req *triple
 	if err != nil {
 		return nil, err
 	}
+	if metadataInfo == nil {
+		return nil, nil
+	}
 	return &tripleapi.MetadataInfoV2{
 		App:      metadataInfo.App,
 		Version:  metadataInfo.Revision,
 		Services: convertV2(metadataInfo.Services),
-	}, err
+	}, nil
 }
 
 func convertV2(serviceInfos map[string]*info.ServiceInfo) map[string]*tripleapi.ServiceInfoV2 {
