@@ -21,15 +21,10 @@ import (
 	"context"
 	"strconv"
 	"strings"
-)
 
-import (
 	"github.com/dubbogo/gost/log/logger"
-
 	perrors "github.com/pkg/errors"
-)
 
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
@@ -159,7 +154,9 @@ func (e *serviceExporter) Export() error {
 	}
 
 	// Always export V2 protocol for Java 3.3.1+ compatibility
-	e.exportV2Services(port)
+	if err := e.exportV2Services(port); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -185,8 +182,8 @@ func (e *serviceExporter) exportV1Services(port string) error {
 
 // exportV2Services always exports V2 metadata service via tri protocol
 // This addresses Java 3.3.1 compatibility issues (error code 1-39)
-func (e *serviceExporter) exportV2Services(port string) {
-	e.exportV2(port)
+func (e *serviceExporter) exportV2Services(port string) error {
+	return e.exportV2(port)
 }
 
 // Unexport will unexport both dubbo and tri protocol metadata services
@@ -255,7 +252,7 @@ func (e *serviceExporter) exportTripleV1(port string) {
 
 // exportV2 exports MetadataServiceV2 using tri protocol with protobuf serialization
 // This ensures compatibility with Java Dubbo 3.3.1+ clients and addresses error code 1-39
-func (e *serviceExporter) exportV2(port string) {
+func (e *serviceExporter) exportV2(port string) error {
 	v2 := &MetadataServiceV2{delegate: e.service}
 	ivkURL := common.NewURLWithOptions(
 		common.WithPath(constant.MetadataServiceV2Name),
@@ -277,6 +274,7 @@ func (e *serviceExporter) exportV2(port string) {
 	e.v2Exporter = extension.GetProtocol(protocolwrapper.FILTER).Export(invoker)
 	// Set V2 service as primary metadata service URL for modern client discovery
 	e.service.(*DefaultMetadataService).setMetadataServiceURL(ivkURL)
+	return nil
 }
 
 // serviceInvoker, if base on server.infoInvoker will cause cycle dependency, so we need to use this way
