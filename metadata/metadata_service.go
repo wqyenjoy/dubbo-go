@@ -181,8 +181,7 @@ func (e *serviceExporter) exportV1Services(port string) error {
 		return e.exportDubbo(port)
 	}
 	// Export tri protocol V1 with hessian2 serialization
-	e.exportTripleV1(port)
-	return nil
+	return e.exportTripleV1(port)
 }
 
 // exportV2Services always exports V2 metadata service via tri protocol
@@ -234,7 +233,7 @@ func (e *serviceExporter) exportDubbo(port string) error {
 
 // exportTripleV1 exports metadata service using tri protocol V1 with hessian2 serialization
 // This maintains compatibility with Dubbo 3.0-3.2 clients
-func (e *serviceExporter) exportTripleV1(port string) {
+func (e *serviceExporter) exportTripleV1(port string) error {
 	version, _ := e.service.Version()
 	svc := &MetadataServiceV1{delegate: e.service}
 	ivkURL := common.NewURLWithOptions(
@@ -253,6 +252,7 @@ func (e *serviceExporter) exportTripleV1(port string) {
 	invoker := proxyFactory.GetInvoker(ivkURL)
 	e.protocolExporter = extension.GetProtocol(protocolwrapper.FILTER).Export(invoker)
 	e.service.(*DefaultMetadataService).setMetadataServiceURL(invoker.GetURL())
+	return nil
 }
 
 // exportV2 exports MetadataServiceV2 using tri protocol with protobuf serialization
