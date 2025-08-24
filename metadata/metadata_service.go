@@ -21,19 +21,15 @@ import (
 	"context"
 	"strconv"
 	"strings"
-)
 
-import (
 	"github.com/dubbogo/gost/log/logger"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/metadata/info"
+	perrors "github.com/pkg/errors"
+
 	tripleapi "dubbo.apache.org/dubbo-go/v3/metadata/triple_api/proto"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/protocolwrapper"
@@ -153,12 +149,12 @@ type serviceExporter struct {
 func (e *serviceExporter) Export() error {
 	port := e.getPort()
 
-	// Step 1: Export V1 protocol for backward compatibility
+	// Export V1 protocol for backward compatibility
 	if err := e.exportV1Services(port); err != nil {
 		return err
 	}
 
-	// Step 2: Always export V2 protocol for Java 3.3.1+ compatibility
+	// Always export V2 protocol for Java 3.3.1+ compatibility
 	e.exportV2Services(port)
 
 	return nil
