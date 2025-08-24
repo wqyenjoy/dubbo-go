@@ -148,30 +148,45 @@ type serviceExporter struct {
 	v2Exporter       base.Exporter
 }
 
-// Export will export the metadataService
+// Export will export metadata services using dual protocol architecture
+// This ensures compatibility with both legacy and modern Dubbo clients
 func (e *serviceExporter) Export() error {
-	var port string
-	if e.opts.port == 0 {
-		port = common.GetRandomPort("")
-	} else {
-		port = strconv.Itoa(e.opts.port)
+	port := e.getPort()
+
+	// Step 1: Export V1 protocol for backward compatibility
+	if err := e.exportV1Services(port); err != nil {
+		return err
 	}
 
-	// Always export dubbo protocol for backward compatibility
-	if e.opts.protocol == constant.DefaultProtocol {
-		err := e.exportDubbo(port)
-		if err != nil {
-			return err
-		}
-	} else {
-		e.exportTripleV1(port)
-	}
-
-	// Always export MetadataServiceV2 via tri protocol to fix Java 3.3.1 compatibility
-	// This addresses error code 1-39 when Java clients try to fetch metadata
-	e.exportV2(port)
+	// Step 2: Always export V2 protocol for Java 3.3.1+ compatibility
+	e.exportV2Services(port)
 
 	return nil
+}
+
+// getPort returns the port to use for metadata service export
+func (e *serviceExporter) getPort() string {
+	if e.opts.port == 0 {
+		return common.GetRandomPort("")
+	}
+	return strconv.Itoa(e.opts.port)
+}
+
+// exportV1Services exports V1 metadata services based on configured protocol
+func (e *serviceExporter) exportV1Services(port string) error {
+	if e.opts.protocol == constant.DefaultProtocol {
+		// Export dubbo protocol with hessian2 serialization
+		return e.exportDubbo(port)
+	}
+	// Export tri protocol V1 with hessian2 serialization
+	e.exportTripleV1(port)
+	return nil
+}
+
+// exportV2Services always exports V2 metadata service via tri protocol
+// This addresses Java 3.3.1 compatibility issues (error code 1-39)
+func (e *serviceExporter) exportV2Services(port string) {
+	e.exportV2(port)
 }
 
 // Unexport will unexport both dubbo and tri protocol metadata services
@@ -184,6 +199,8 @@ func (e *serviceExporter) Unexport() {
 	}
 }
 
+// exportDubbo exports metadata service using dubbo protocol with hessian2 serialization
+// This maintains compatibility with legacy Dubbo 2.x clients
 func (e *serviceExporter) exportDubbo(port string) error {
 	version, _ := e.service.Version()
 	ivkURL := common.NewURLWithOptions(
@@ -199,13 +216,12 @@ func (e *serviceExporter) exportDubbo(port string) error {
 		common.WithParamsValue(constant.MetadataTypeKey, e.opts.metadataType),
 		common.WithParamsValue(constant.SideKey, constant.SideProvider),
 	)
+
 	methods, err := common.ServiceMap.Register(ivkURL.Interface(), ivkURL.Protocol, ivkURL.Group(), ivkURL.Version(), e.service)
 	if err != nil {
-		formatErr := perrors.Errorf("The service %v needExport the protocol %v error! Error message is %v.",
-			ivkURL.Interface(), ivkURL.Protocol, err.Error())
-		logger.Errorf(formatErr.Error())
-		return formatErr
+		return perrors.Errorf("failed to export dubbo metadata service %v: %v", ivkURL.Interface(), err)
 	}
+
 	ivkURL.Methods = strings.Split(methods, ",")
 	proxyFactory := extension.GetProxyFactory("")
 	invoker := proxyFactory.GetInvoker(ivkURL)
@@ -214,6 +230,8 @@ func (e *serviceExporter) exportDubbo(port string) error {
 	return nil
 }
 
+// exportTripleV1 exports metadata service using tri protocol V1 with hessian2 serialization
+// This maintains compatibility with Dubbo 3.0-3.2 clients
 func (e *serviceExporter) exportTripleV1(port string) {
 	version, _ := e.service.Version()
 	svc := &MetadataServiceV1{delegate: e.service}
@@ -235,9 +253,10 @@ func (e *serviceExporter) exportTripleV1(port string) {
 	e.service.(*DefaultMetadataService).setMetadataServiceURL(invoker.GetURL())
 }
 
+// exportV2 exports MetadataServiceV2 using tri protocol with protobuf serialization
+// This ensures compatibility with Java Dubbo 3.3.1+ clients and addresses error code 1-39
 func (e *serviceExporter) exportV2(port string) {
 	v2 := &MetadataServiceV2{delegate: e.service}
-	// v2 only supports triple protocol
 	ivkURL := common.NewURLWithOptions(
 		common.WithPath(constant.MetadataServiceV2Name),
 		common.WithProtocol(constant.TriProtocol),
@@ -246,8 +265,7 @@ func (e *serviceExporter) exportV2(port string) {
 		common.WithParamsValue(constant.VersionKey, constant.MetadataServiceV2Version),
 		common.WithInterface(constant.MetadataServiceV2Name),
 		common.WithMethods(strings.Split("getMetadataInfo,GetMetadataInfo", ",")),
-		// Ensure compatibility with Java metadata service protocol requirements
-		// Note: tri protocol uses HTTP2/Protobuf, no hessian2 serialization needed
+		// Note: No hessian2 serialization - V2 uses pure protobuf for better performance
 		common.WithParamsValue(constant.ReleaseKey, constant.Version),
 		common.WithParamsValue(constant.MetadataTypeKey, e.opts.metadataType),
 		common.WithParamsValue(constant.SideKey, constant.SideProvider),
@@ -257,8 +275,7 @@ func (e *serviceExporter) exportV2(port string) {
 	proxyFactory := extension.GetProxyFactory("")
 	invoker := proxyFactory.GetInvoker(ivkURL)
 	e.v2Exporter = extension.GetProtocol(protocolwrapper.FILTER).Export(invoker)
-	// Set tri protocol MetadataServiceV2 as the primary metadata service URL
-	// This ensures Java 3.3.1 can discover and use tri protocol for metadata access
+	// Set V2 service as primary metadata service URL for modern client discovery
 	e.service.(*DefaultMetadataService).setMetadataServiceURL(ivkURL)
 }
 
