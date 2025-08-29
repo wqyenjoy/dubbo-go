@@ -1,0 +1,79 @@
+# Dubbo-Go项目AI助手规则配置
+
+## 项目概述
+这是一个基于Go语言的Apache Dubbo微服务框架实现项目，专注于提供高性能、易用的微服务解决方案。
+
+## 代码规范
+- 使用Go标准命名约定：包名小写，函数/方法使用驼峰命名
+- 使用goimports进行导入管理
+- 遵循Go代码格式化标准
+- 使用有意义的变量和函数名
+- 添加必要的注释和文档
+- 项目的import格式为：
+```
+import (
+	"errors"
+	"testing"
+)
+
+import (
+	gxset "github.com/dubbogo/gost/container/set"
+	"github.com/dubbogo/gost/gof/observer"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+)
+
+import (
+	"dubbo.apache.org/dubbo-go/v3/common"
+	"dubbo.apache.org/dubbo-go/v3/common/constant"
+	"dubbo.apache.org/dubbo-go/v3/common/extension"
+	"dubbo.apache.org/dubbo-go/v3/metadata"
+	"dubbo.apache.org/dubbo-go/v3/metadata/info"
+	"dubbo.apache.org/dubbo-go/v3/metadata/mapping"
+	"dubbo.apache.org/dubbo-go/v3/metadata/report"
+)
+
+## 开发原则
+- 保持代码简洁和可读性
+- 使用接口抽象，提高代码的可测试性
+- 遵循SOLID原则
+- 优先使用标准库功能
+- 考虑并发安全
+
+## AI助手行为准则
+- 始终使用中文回复用户查询
+- 提供详细的代码解释和实现建议
+- 在修改代码前先理解现有架构
+- 优先考虑向后兼容性
+- 提供完整的解决方案而非片段代码
+
+## 技术栈偏好
+- 优先使用Go标准库和官方工具
+- 推荐使用imports-formatter进行代码格式化
+- 支持多种配置中心（Nacos、Zookeeper、Apollo等）
+- 集成多种服务发现机制
+
+## 代码注释规范
+- 使用JSDoc风格注释
+- 为复杂函数提供详细说明
+- 解释重要的业务逻辑和设计决策
+- 标注TODO和FIXME注释
+
+## 测试要求
+- 为新功能编写单元测试
+- 使用table-driven tests进行数据驱动测试
+- 确保测试覆盖率合理
+- 编写可读性强的测试用例
+
+## 错误处理
+- 使用errors包进行错误处理
+- 提供有意义的错误信息
+- 考虑错误传播和处理链
+- 记录重要的错误日志
+
+## 性能考虑
+- 注意内存使用和GC压力
+- 使用合适的并发模式
+- 考虑资源池和连接复用
+- 监控和分析性能瓶颈
