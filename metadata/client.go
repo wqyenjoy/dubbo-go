@@ -21,19 +21,15 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
-)
 
-import (
 	"github.com/dubbogo/gost/log/logger"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/metadata/info"
+	perrors "github.com/pkg/errors"
+
 	tripleapi "dubbo.apache.org/dubbo-go/v3/metadata/triple_api/proto"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/invocation"
@@ -92,13 +88,14 @@ func (m *triMetadataServiceV2) getMetadataInfo(ctx context.Context, revision str
 }
 
 func convertMetadataInfoV2(v2 *tripleapi.MetadataInfoV2) *info.MetadataInfo {
-	infos := make(map[string]*info.ServiceInfo, 0)
+	infos := make(map[string]*info.ServiceInfo, len(v2.Services))
 	for k, v := range v2.Services {
 		serviceInfo := &info.ServiceInfo{
 			Name:     v.Name,
 			Group:    v.Group,
 			Version:  v.Version,
 			Protocol: v.Protocol,
+			Port:     int(v.Port),
 			Path:     v.Path,
 			Params:   v.Params,
 		}

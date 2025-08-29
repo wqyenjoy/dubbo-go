@@ -28,10 +28,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-)
 
-import (
-	"dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/proto/connectext/grpc/status/v1"
+	statusv1 "dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/proto/connectext/grpc/status/v1"
 )
 
 // protocol specification headers
@@ -781,7 +779,10 @@ func grpcHTTPToCode(httpCode int) Code {
 func grpcErrorFromTrailer(bufferPool *bufferPool, protobuf Codec, trailer http.Header) *Error {
 	codeHeader := getHeaderCanonical(trailer, grpcHeaderStatus)
 	if codeHeader == "" {
-		return NewError(CodeInternal, errTrailersWithoutGRPCStatus)
+		// If the server doesn't provide gRPC status headers, it means the server
+		// is not a gRPC server or doesn't support the gRPC protocol properly.
+		// In this case, we should return CodeUnavailable instead of CodeInternal.
+		return NewError(CodeUnavailable, errTrailersWithoutGRPCStatus)
 	}
 	if codeHeader == "0" {
 		return nil

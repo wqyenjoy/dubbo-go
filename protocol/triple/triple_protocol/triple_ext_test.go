@@ -29,18 +29,14 @@ import (
 	"sync"
 	"testing"
 	"time"
-)
 
-import (
 	"google.golang.org/protobuf/proto"
-
 	"google.golang.org/protobuf/reflect/protoregistry"
-)
 
-import (
 	triple "dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol"
 	"dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/assert"
 	"dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/gen/proto/connect/import/v1/importv1connect"
+
 	pingv1 "dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/gen/proto/connect/ping/v1"
 	"dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/gen/proto/connect/ping/v1/pingv1connect"
 )
@@ -730,7 +726,7 @@ func TestGRPCMissingTrailersError(t *testing.T) {
 		var tripleErr *triple.Error
 		ok := errors.As(err, &tripleErr)
 		assert.True(t, ok)
-		assert.Equal(t, tripleErr.Code(), triple.CodeInternal)
+		assert.Equal(t, tripleErr.Code(), triple.CodeUnavailable)
 		assert.True(
 			t,
 			strings.HasSuffix(tripleErr.Message(), "gRPC protocol error: no Grpc-Status trailer"),

@@ -21,19 +21,15 @@ import (
 	"context"
 	"strconv"
 	"strings"
-)
 
-import (
 	"github.com/dubbogo/gost/log/logger"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/metadata/info"
+	perrors "github.com/pkg/errors"
+
 	tripleapi "dubbo.apache.org/dubbo-go/v3/metadata/triple_api/proto"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/protocolwrapper"
@@ -246,6 +242,8 @@ func (e *serviceExporter) exportTripleV1(port string) error {
 	proxyFactory := extension.GetProxyFactory("")
 	invoker := proxyFactory.GetInvoker(ivkURL)
 	e.protocolExporter = extension.GetProtocol(protocolwrapper.FILTER).Export(invoker)
+	// Set V1 as the primary metadata service URL for backward compatibility
+	// V1 clients will use this URL for metadata service discovery
 	e.service.(*DefaultMetadataService).setMetadataServiceURL(invoker.GetURL())
 	return nil
 }
@@ -282,6 +280,7 @@ func (e *serviceExporter) exportV2(port string) error {
 	}
 
 	// V2 service is exported on same port as V1 with different interface name
+	// Note: V2 does not override the primary metadata service URL to maintain V1 compatibility
 	logger.Infof("MetadataServiceV2 exported on port %s with interface %s", port, constant.MetadataServiceV2Name)
 	return nil
 }
@@ -320,7 +319,7 @@ func convertV1(serviceInfos map[string]*info.ServiceInfo) map[string]*tripleapi.
 			Group:    i.Group,
 			Version:  i.Version,
 			Protocol: i.Protocol,
-			Port:     0,
+			Port:     int32(i.Port),
 			Path:     i.Path,
 			Params:   i.Params,
 		}
@@ -367,7 +366,7 @@ func convertV2(serviceInfos map[string]*info.ServiceInfo) map[string]*tripleapi.
 			Group:    serviceInfo.Group,
 			Version:  serviceInfo.Version,
 			Protocol: serviceInfo.Protocol,
-			Port:     0,
+			Port:     int32(serviceInfo.Port),
 			Path:     serviceInfo.Path,
 			Params:   serviceInfo.Params,
 		}
