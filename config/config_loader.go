@@ -18,8 +18,6 @@
 package config
 
 import (
-	"os"
-
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"github.com/dubbogo/gost/log/logger"
 	"github.com/pkg/errors"
@@ -29,8 +27,7 @@ import (
 )
 
 var (
-	rootConfig       = NewRootConfigBuilder().Build()
-	hotReloadManager *HotReloadManager
+	rootConfig = NewRootConfigBuilder().Build()
 )
 
 func init() {
@@ -121,117 +118,8 @@ func IsProvider() bool {
 	return len(currentRootConfig.Provider.Services) > 0
 }
 
-// LoadWithHotReload 加载配置并启用热加载功能
-func LoadWithHotReload(opts ...LoaderConfOption) error {
-	// 先正常加载配置
-	rc, err := Load(opts...)
-	if err != nil {
-		return err
-	}
 
-	// 设置全局配置
-	SetAtomicRootConfig(rc)
 
-	// 初始化配置
-	if err := rc.Init(); err != nil {
-		return err
-	}
 
-	// 启动热加载管理器
-	return startHotReloadManager()
-}
 
-// LoadWithHotReloadAndOptions 加载配置并启用热加载功能，支持热加载选项
-func LoadWithHotReloadAndOptions(loaderOpts []LoaderConfOption, hotReloadOpts ...HotReloadOption) error {
-	// 先正常加载配置
-	rc, err := Load(loaderOpts...)
-	if err != nil {
-		return err
-	}
 
-	// 设置全局配置
-	SetAtomicRootConfig(rc)
-
-	// 初始化配置
-	if err := rc.Init(); err != nil {
-		return err
-	}
-
-	// 启动热加载管理器，应用热加载选项
-	return startHotReloadManagerWithOptions(hotReloadOpts...)
-}
-
-// startHotReloadManager 启动热加载管理器
-func startHotReloadManager() error {
-	// 从环境变量或默认路径获取配置文件路径
-	configPath := getConfigPath()
-
-	// 创建热加载管理器
-	currentRootConfig := GetAtomicRootConfig()
-	manager, err := NewHotReloadManager(configPath, currentRootConfig)
-	if err != nil {
-		logger.Errorf("Failed to create hot reload manager: %v", err)
-		return err
-	}
-
-	// 启动热加载
-	if err := manager.Start(); err != nil {
-		logger.Errorf("Failed to start hot reload manager: %v", err)
-		return err
-	}
-
-	hotReloadManager = manager
-	return nil
-}
-
-// startHotReloadManagerWithOptions 启动热加载管理器，支持选项
-func startHotReloadManagerWithOptions(opts ...HotReloadOption) error {
-	// 从环境变量或默认路径获取配置文件路径
-	configPath := getConfigPath()
-
-	// 创建热加载管理器
-	currentRootConfig := GetAtomicRootConfig()
-	manager, err := NewHotReloadManager(configPath, currentRootConfig)
-	if err != nil {
-		logger.Errorf("Failed to create hot reload manager: %v", err)
-		return err
-	}
-
-	// 应用热加载选项
-	for _, opt := range opts {
-		opt(manager)
-	}
-
-	// 启动热加载
-	if err := manager.Start(); err != nil {
-		logger.Errorf("Failed to start hot reload manager: %v", err)
-		return err
-	}
-
-	hotReloadManager = manager
-	return nil
-}
-
-// getConfigPath 获取配置文件路径
-func getConfigPath() string {
-	// 优先从环境变量获取
-	if path := os.Getenv("DUBBO_CONFIG_FILE"); path != "" {
-		return path
-	}
-
-	// 默认配置文件路径
-	return "conf/dubbogo.yml"
-}
-
-// StopHotReload 停止热加载
-func StopHotReload() error {
-	if hotReloadManager != nil {
-		return hotReloadManager.Stop()
-	}
-	return nil
-}
-
-// GetHotReloadManager 获取热加载管理器
-func GetHotReloadManager() *HotReloadManager {
-	return hotReloadManager
-}
