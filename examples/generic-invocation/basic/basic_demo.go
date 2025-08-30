@@ -29,13 +29,13 @@ import (
 )
 
 func main() {
-	fmt.Println("🚀 泛化调用功能演示")
+	fmt.Println("Generic Invocation Demo")
 	fmt.Println("====================")
 
-	// 创建服务实例
+	// Create service instance
 	calculatorService := generic.NewGenericService("com.example.CalculatorService")
 
-	// 配置服务实现
+	// Configure service implementation
 	calculatorService.Invoke = func(ctx context.Context, methodName string, types []string, args []hessian.Object) (any, error) {
 		switch methodName {
 		case "add":
@@ -44,7 +44,7 @@ func main() {
 				b, ok2 := args[1].(int32)
 				if ok1 && ok2 {
 					result := a + b
-					fmt.Printf("📥 网关接收: %d + %d = %d\n", a, b, result)
+					fmt.Printf("Gateway received: %d + %d = %d\n", a, b, result)
 					return result, nil
 				}
 			}
@@ -55,7 +55,7 @@ func main() {
 				b, ok2 := args[1].(int32)
 				if ok1 && ok2 {
 					result := a * b
-					fmt.Printf("📥 网关接收: %d × %d = %d\n", a, b, result)
+					fmt.Printf("Gateway received: %d × %d = %d\n", a, b, result)
 					return result, nil
 				}
 			}
@@ -65,7 +65,7 @@ func main() {
 				name, ok := args[0].(string)
 				if ok {
 					result := fmt.Sprintf("Hello, %s!", name)
-					fmt.Printf("📥 网关接收: 问候 %s -> %s\n", name, result)
+					fmt.Printf("Gateway received: Greeting %s -> %s\n", name, result)
 					return result, nil
 				}
 			}
@@ -75,75 +75,75 @@ func main() {
 		}
 	}
 
-	// 启动网关接收端 (模拟服务端)
+	// Start gateway receiver (simulate server)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		fmt.Println("🔄 网关接收端已启动，等待请求...")
-		// 在实际场景中，这里会是HTTP服务器或消息队列消费者
-		// 这里我们只是演示，所以等待发送端调用
+		fmt.Println("Gateway receiver started, waiting for requests...")
+		// In real scenarios, this would be HTTP server or message queue consumer
+		// Here we just demonstrate, so wait for sender to call
 	}()
 
-	// 启动网关发送端 (模拟客户端)
+	// Start gateway sender (simulate client)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		fmt.Println("📤 网关发送端开始发送请求...")
+		fmt.Println("Gateway sender starts sending requests...")
 
-		time.Sleep(100 * time.Millisecond) // 等待接收端启动
+		time.Sleep(100 * time.Millisecond) // Wait for receiver to start
 
 		ctx := context.Background()
 
-		// 测试用例1: 加法运算
-		fmt.Println("\n📊 测试用例1: 加法运算")
+		// Addition test case
+		fmt.Println("\nTest Case 1: Addition")
 		result1, err1 := calculatorService.Invoke(ctx, "add",
 			[]string{"int", "int"}, []hessian.Object{int32(15), int32(27)})
 		if err1 != nil {
-			fmt.Printf("❌ 加法调用失败: %v\n", err1)
+			fmt.Printf("Addition call failed: %v\n", err1)
 		} else {
-			fmt.Printf("✅ 加法结果: %v\n", result1)
+			fmt.Printf("Addition result: %v\n", result1)
 		}
 
-		// 测试用例2: 乘法运算
-		fmt.Println("\n📊 测试用例2: 乘法运算")
+		// Multiplication test case
+		fmt.Println("\nTest Case 2: Multiplication")
 		result2, err2 := calculatorService.Invoke(ctx, "multiply",
 			[]string{"int", "int"}, []hessian.Object{int32(8), int32(9)})
 		if err2 != nil {
-			fmt.Printf("❌ 乘法调用失败: %v\n", err2)
+			fmt.Printf("Multiplication call failed: %v\n", err2)
 		} else {
-			fmt.Printf("✅ 乘法结果: %v\n", result2)
+			fmt.Printf("Multiplication result: %v\n", result2)
 		}
 
-		// 测试用例3: 字符串处理
-		fmt.Println("\n📊 测试用例3: 字符串处理")
+		// String processing test case
+		fmt.Println("\nTest Case 3: String processing")
 		result3, err3 := calculatorService.Invoke(ctx, "greet",
-			[]string{"java.lang.String"}, []hessian.Object{"泛化调用"})
+			[]string{"java.lang.String"}, []hessian.Object{"Generic Invocation"})
 		if err3 != nil {
-			fmt.Printf("❌ 问候调用失败: %v\n", err3)
+			fmt.Printf("Greeting call failed: %v\n", err3)
 		} else {
-			fmt.Printf("✅ 问候结果: %v\n", result3)
+			fmt.Printf("Greeting result: %v\n", result3)
 		}
 
-		// 测试用例4: 错误处理
-		fmt.Println("\n📊 测试用例4: 错误处理")
+		// Error handling test case
+		fmt.Println("\nTest Case 4: Error handling")
 		_, err4 := calculatorService.Invoke(ctx, "unknownMethod",
 			[]string{}, []hessian.Object{})
 		if err4 != nil {
-			fmt.Printf("✅ 错误处理正常: %v\n", err4)
+			fmt.Printf("Error handling works correctly: %v\n", err4)
 		} else {
-			fmt.Println("❌ 错误处理异常: 应该返回错误")
+			fmt.Println("Error handling exception: should return error")
 		}
 
-		fmt.Println("📤 网关发送端完成所有测试")
+		fmt.Println("Gateway sender completes all tests")
 	}()
 
-	// 等待所有goroutine完成
+	// Wait for all goroutines to complete
 	wg.Wait()
 
-	fmt.Println("\n🎉 泛化调用功能演示完成!")
-	fmt.Println("====================")
-	fmt.Println("✅ 网关发送端和接收端通信成功")
-	fmt.Println("✅ 泛化调用功能工作正常")
-	fmt.Println("✅ 生产环境可用!")
+	fmt.Println("\nGeneric invocation demo completed!")
+	fmt.Println("=====================")
+	fmt.Println("Gateway sender and receiver communication successful")
+	fmt.Println("Generic invocation works normally")
+	fmt.Println("Production ready!")
 }

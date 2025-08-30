@@ -28,7 +28,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/config/generic"
 )
 
-// GenericRequest 泛化调用请求
+// GenericRequest represents a generic invocation request
 type GenericRequest struct {
 	ServiceName string
 	MethodName  string
@@ -37,26 +37,26 @@ type GenericRequest struct {
 	Response    chan GenericResponse
 }
 
-// GenericResponse 泛化调用响应
+// GenericResponse represents a generic invocation response
 type GenericResponse struct {
 	Result any
 	Error  error
 }
 
-// Gateway 网关结构体
+// Gateway represents the gateway struct
 type Gateway struct {
 	requestChan chan GenericRequest
 	service     *generic.GenericService
 }
 
-// NewGateway 创建网关实例
+// NewGateway creates a gateway instance
 func NewGateway() *Gateway {
 	gw := &Gateway{
 		requestChan: make(chan GenericRequest, 100),
 		service:     generic.NewGenericService("com.example.GatewayService"),
 	}
 
-	// 配置服务实现
+	// Configure service implementation
 	gw.service.Invoke = func(ctx context.Context, methodName string, types []string, args []hessian.Object) (any, error) {
 		switch methodName {
 		case "processOrder":
@@ -70,7 +70,7 @@ func NewGateway() *Gateway {
 						"status":    "processed",
 						"timestamp": time.Now().Format("2006-01-02 15:04:05"),
 					}
-					fmt.Printf("📥 网关处理订单: %s, 金额: %.2f\n", orderID, amount)
+					fmt.Printf("Gateway processes order: %s, amount: %.2f\n", orderID, amount)
 					return result, nil
 				}
 			}
@@ -81,11 +81,11 @@ func NewGateway() *Gateway {
 				if ok {
 					result := map[string]interface{}{
 						"userId": userID,
-						"name":   "用户" + userID,
+						"name":   "User" + userID,
 						"level":  "VIP",
 						"points": 1250,
 					}
-					fmt.Printf("📥 网关查询用户: %s\n", userID)
+					fmt.Printf("Gateway queries user: %s\n", userID)
 					return result, nil
 				}
 			}
@@ -101,7 +101,7 @@ func NewGateway() *Gateway {
 						"message":        message,
 						"sent":           true,
 					}
-					fmt.Printf("📥 网关发送通知: %s -> %s\n", userID, message)
+					fmt.Printf("Gateway sends notification: %s -> %s\n", userID, message)
 					return result, nil
 				}
 			}
@@ -114,20 +114,20 @@ func NewGateway() *Gateway {
 	return gw
 }
 
-// StartGatewayReceiver 启动网关接收端
+// StartGatewayReceiver starts the gateway receiver
 func (gw *Gateway) StartGatewayReceiver(ctx context.Context) {
-	fmt.Println("🔄 网关接收端已启动，监听请求...")
+	fmt.Println("Gateway receiver started, listening for requests...")
 
 	for {
 		select {
 		case req := <-gw.requestChan:
 			go func(request GenericRequest) {
-				fmt.Printf("📨 接收到泛化调用请求: %s.%s\n", request.ServiceName, request.MethodName)
+				fmt.Printf("Received generic invocation request: %s.%s\n", request.ServiceName, request.MethodName)
 
-				// 执行泛化调用
+				// Execute generic invocation
 				result, err := gw.service.Invoke(ctx, request.MethodName, request.Types, request.Args)
 
-				// 发送响应
+				// Send response
 				response := GenericResponse{
 					Result: result,
 					Error:  err,
@@ -136,19 +136,19 @@ func (gw *Gateway) StartGatewayReceiver(ctx context.Context) {
 				select {
 				case request.Response <- response:
 				case <-time.After(5 * time.Second):
-					fmt.Printf("⚠️ 响应发送超时: %s.%s\n", request.ServiceName, request.MethodName)
+					fmt.Printf("Response sending timeout: %s.%s\n", request.ServiceName, request.MethodName)
 				}
 			}(req)
 		case <-ctx.Done():
-			fmt.Println("🛑 网关接收端已停止")
+			fmt.Println("Gateway receiver stopped")
 			return
 		}
 	}
 }
 
-// StartGatewaySender 启动网关发送端
+// StartGatewaySender starts the gateway sender
 func (gw *Gateway) StartGatewaySender(ctx context.Context) {
-	fmt.Println("📤 网关发送端开始发送请求...")
+	fmt.Println("Gateway sender starts sending requests...")
 
 	testCases := []struct {
 		name   string
@@ -158,35 +158,35 @@ func (gw *Gateway) StartGatewaySender(ctx context.Context) {
 		delay  time.Duration
 	}{
 		{
-			name:   "订单处理",
+			name:   "Order Processing",
 			method: "processOrder",
 			types:  []string{"java.lang.String", "double"},
 			args:   []hessian.Object{"ORDER_2024_001", 299.99},
 			delay:  200 * time.Millisecond,
 		},
 		{
-			name:   "用户查询",
+			name:   "User Query",
 			method: "getUserInfo",
 			types:  []string{"java.lang.String"},
 			args:   []hessian.Object{"user_12345"},
 			delay:  300 * time.Millisecond,
 		},
 		{
-			name:   "发送通知",
+			name:   "Send Notification",
 			method: "sendNotification",
 			types:  []string{"java.lang.String", "java.lang.String"},
-			args:   []hessian.Object{"user_12345", "您的订单已发货！"},
+			args:   []hessian.Object{"user_12345", "Your order has been shipped!"},
 			delay:  100 * time.Millisecond,
 		},
 		{
-			name:   "并发订单处理1",
+			name:   "Concurrent Order Processing 1",
 			method: "processOrder",
 			types:  []string{"java.lang.String", "double"},
 			args:   []hessian.Object{"ORDER_2024_002", 159.50},
 			delay:  150 * time.Millisecond,
 		},
 		{
-			name:   "并发订单处理2",
+			name:   "Concurrent Order Processing 2",
 			method: "processOrder",
 			types:  []string{"java.lang.String", "double"},
 			args:   []hessian.Object{"ORDER_2024_003", 89.99},
@@ -207,12 +207,12 @@ func (gw *Gateway) StartGatewaySender(ctx context.Context) {
 		}) {
 			defer wg.Done()
 
-			// 延迟执行，模拟真实请求间隔
+			// Delayed execution to simulate real request intervals
 			time.Sleep(tc.delay)
 
-			fmt.Printf("🚀 发送测试用例 %d: %s\n", index+1, tc.name)
+			fmt.Printf("Send test case %d: %s\n", index+1, tc.name)
 
-			// 创建请求
+			// Create request
 			responseChan := make(chan GenericResponse, 1)
 			request := GenericRequest{
 				ServiceName: "com.example.GatewayService",
@@ -222,45 +222,45 @@ func (gw *Gateway) StartGatewaySender(ctx context.Context) {
 				Response:    responseChan,
 			}
 
-			// 发送请求
+			// Send request
 			select {
 			case gw.requestChan <- request:
-				fmt.Printf("📤 请求已发送: %s.%s\n", request.ServiceName, request.MethodName)
+				fmt.Printf("Request sent: %s.%s\n", request.ServiceName, request.MethodName)
 			case <-time.After(3 * time.Second):
-				fmt.Printf("❌ 请求发送超时: %s\n", tc.name)
+				fmt.Printf("Request sending timeout: %s\n", tc.name)
 				return
 			}
 
-			// 等待响应
+			// Wait for response
 			select {
 			case response := <-responseChan:
 				if response.Error != nil {
-					fmt.Printf("❌ 响应错误 [%s]: %v\n", tc.name, response.Error)
+					fmt.Printf("Response error [%s]: %v\n", tc.name, response.Error)
 				} else {
-					fmt.Printf("✅ 响应成功 [%s]: %v\n", tc.name, response.Result)
+					fmt.Printf("Response successful [%s]: %v\n", tc.name, response.Result)
 				}
 			case <-time.After(5 * time.Second):
-				fmt.Printf("⏰ 响应超时 [%s]\n", tc.name)
+				fmt.Printf("Response timeout [%s]\n", tc.name)
 			}
 		}(i, testCase)
 	}
 
 	wg.Wait()
-	fmt.Println("📤 网关发送端完成所有测试")
+	fmt.Println("Gateway sender completes all tests")
 }
 
 func main() {
-	fmt.Println("🚀 泛化调用网关演示 - 生产环境模拟")
-	fmt.Println("=================================")
+	fmt.Println("Generic Invocation Gateway Demo - Production Simulation")
+	fmt.Println("================================================")
 
-	// 创建网关实例
+	// Create gateway instance
 	gateway := NewGateway()
 
-	// 创建上下文用于控制生命周期
+	// Create context for lifecycle control
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 启动网关接收端
+	// Start gateway receiver
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -268,32 +268,32 @@ func main() {
 		gateway.StartGatewayReceiver(ctx)
 	}()
 
-	// 等待接收端启动
+	// Wait for receiver to start
 	time.Sleep(100 * time.Millisecond)
 
-	// 启动网关发送端
+	// Start gateway sender
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		gateway.StartGatewaySender(ctx)
 	}()
 
-	// 等待所有goroutine完成
+	// Wait for all goroutines to complete
 	wg.Wait()
 
-	fmt.Println("\n🎉 泛化调用网关演示完成!")
-	fmt.Println("========================")
-	fmt.Println("✅ 网关发送端和接收端通信成功")
-	fmt.Println("✅ 泛化调用功能在生产环境模拟中工作正常")
-	fmt.Println("✅ 并发请求处理正常")
-	fmt.Println("✅ 错误处理机制正常")
-	fmt.Println("✅ 生产环境完全可用!")
+	fmt.Println("\nGeneric Invocation Gateway Demo Completed!")
+	fmt.Println("==========================================")
+	fmt.Println("Gateway sender and receiver communication successful")
+	fmt.Println("Generic invocation works normally in production simulation")
+	fmt.Println("Concurrent request handling works normally")
+	fmt.Println("Error handling mechanism works normally")
+	fmt.Println("Fully production ready!")
 
-	// 性能统计
-	fmt.Println("\n📊 性能统计:")
-	fmt.Printf("   • 总请求数: 5个\n")
-	fmt.Printf("   • 并发请求: 2个\n")
-	fmt.Printf("   • 平均响应时间: <5秒\n")
-	fmt.Printf("   • 成功率: 100%%\n")
-	fmt.Printf("   • 错误处理: 正常\n")
+	// Performance statistics
+	fmt.Println("\nPerformance Statistics:")
+	fmt.Printf("   • Total requests: 5\n")
+	fmt.Printf("   • Concurrent requests: 2\n")
+	fmt.Printf("   • Average response time: <5 seconds\n")
+	fmt.Printf("   • Success rate: 100%%\n")
+	fmt.Printf("   • Error handling: Normal\n")
 }
