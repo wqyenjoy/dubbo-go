@@ -19,26 +19,28 @@ package config
 
 import (
 	"testing"
+)
 
-	"dubbo.apache.org/dubbo-go/v3/common/constant"
+import (
 	"github.com/stretchr/testify/assert"
+)
 
+import (
+	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	_ "dubbo.apache.org/dubbo-go/v3/metadata/report/nacos"
 )
 
 func TestProviderConfigEmptyRegistry(t *testing.T) {
-	rc, err := Load(WithPath("./testdata/config/provider/empty_registry_application.yaml"))
+	err := Load(WithPath("./testdata/config/provider/empty_registry_application.yaml"))
 	assert.Nil(t, err)
-	assert.NotNil(t, rc)
 	provider := rootConfig.Provider
 	assert.Equal(t, 1, len(provider.RegistryIDs))
 	assert.Equal(t, "nacos", provider.RegistryIDs[0])
 }
 
 func TestProviderConfigRootRegistry(t *testing.T) {
-	rc, err := Load(WithPath("./testdata/config/provider/registry_application.yaml"))
+	err := Load(WithPath("./testdata/config/provider/registry_application.yaml"))
 	assert.Nil(t, err)
-	assert.NotNil(t, rc)
 	provider := rootConfig.Provider
 	assert.NotNil(t, provider)
 	assert.NotNil(t, provider.Services["HelloService"])

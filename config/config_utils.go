@@ -22,11 +22,17 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+)
 
+import (
+	"github.com/go-playground/validator/v10"
+
+	"github.com/pkg/errors"
+)
+
+import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
-	"github.com/go-playground/validator/v10"
-	"github.com/pkg/errors"
 )
 
 var validate *validator.Validate

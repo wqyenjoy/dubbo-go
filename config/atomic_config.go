@@ -22,16 +22,16 @@ import (
 )
 
 var (
-	// atomicRootConfig 使用atomic.Value保护rootConfig
+	// atomicRootConfig uses atomic.Value to protect rootConfig
 	atomicRootConfig atomic.Value
 )
 
-// init 初始化atomicRootConfig
+// init initializes atomicRootConfig
 func init() {
 	atomicRootConfig.Store(NewRootConfigBuilder().Build())
 }
 
-// GetAtomicRootConfig 线程安全地获取根配置
+// GetAtomicRootConfig safely gets the root configuration in a thread-safe manner
 func GetAtomicRootConfig() *RootConfig {
 	if rc := atomicRootConfig.Load(); rc != nil {
 		return rc.(*RootConfig)
@@ -39,7 +39,9 @@ func GetAtomicRootConfig() *RootConfig {
 	return nil
 }
 
-// SetAtomicRootConfig 线程安全地设置根配置
+// SetAtomicRootConfig safely sets the root configuration in a thread-safe manner
 func SetAtomicRootConfig(rc *RootConfig) {
 	atomicRootConfig.Store(rc)
+	// Synchronously update package-level variable for compatibility with code and tests that directly use rootConfig
+	rootConfig = rc
 }

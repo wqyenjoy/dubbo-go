@@ -25,11 +25,11 @@
 package triple_protocol
 
 import (
-    "errors"
-    "fmt"
-    "io"
-    "net/http"
-    "net/url"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 )
 
 // Version is the semantic version of the triple module.

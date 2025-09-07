@@ -36,7 +36,7 @@ import (
 func TestIndependentConfig(t *testing.T) {
 	// instance configuration
 	ins, err := NewInstance(
-		WithName("dubbo_test"),
+		WithName("dubbo-test"),
 		WithRegistry(
 			registry.WithZookeeper(),
 			registry.WithAddress("127.0.0.1:2181"),
@@ -49,9 +49,9 @@ func TestIndependentConfig(t *testing.T) {
 	// client configuration, ensure that the `instance` configuration can be passed to the `client`.
 	_, err = ins.NewClient(
 		func(options *client.ClientOptions) {
-			assert.Equal(t, "dubbo_test", options.Application.Name)
-			options.Application.Name = "dubbo_test_client"
-			assert.Equal(t, "dubbo_test_client", options.Application.Name)
+			assert.Equal(t, "dubbo-test", options.Application.Name)
+			options.Application.Name = "dubbo-test-client"
+			assert.Equal(t, "dubbo-test-client", options.Application.Name)
 
 			assert.Equal(t, "127.0.0.1:2181", options.Registries[constant.ZookeeperKey].Address)
 			options.Registries[constant.ZookeeperKey].Address = "127.0.0.1:2182"
@@ -66,9 +66,9 @@ func TestIndependentConfig(t *testing.T) {
 	// `instance` configuration is not affected by the `client` configuration.
 	_, err = ins.NewServer(
 		func(options *server.ServerOptions) {
-			assert.Equal(t, "dubbo_test", options.Application.Name)
-			options.Application.Name = "dubbo_test_server"
-			assert.Equal(t, "dubbo_test_server", options.Application.Name)
+			assert.Equal(t, "dubbo-test", options.Application.Name)
+			options.Application.Name = "dubbo-test-server"
+			assert.Equal(t, "dubbo-test-server", options.Application.Name)
 
 			assert.Equal(t, "127.0.0.1:2181", options.Registries[constant.ZookeeperKey].Address)
 			options.Registries[constant.ZookeeperKey].Address = "127.0.0.1:2183"
@@ -83,9 +83,9 @@ func TestIndependentConfig(t *testing.T) {
 	// by the `server` configuration.
 	_, err = ins.NewClient(
 		func(options *client.ClientOptions) {
-			assert.Equal(t, "dubbo_test", options.Application.Name)
-			options.Application.Name = "dubbo_test_client"
-			assert.Equal(t, "dubbo_test_client", options.Application.Name)
+			assert.Equal(t, "dubbo-test", options.Application.Name)
+			options.Application.Name = "dubbo-test-client"
+			assert.Equal(t, "dubbo-test-client", options.Application.Name)
 
 			assert.Equal(t, "127.0.0.1:2181", options.Registries[constant.ZookeeperKey].Address)
 			options.Registries[constant.ZookeeperKey].Address = "127.0.0.1:2184"

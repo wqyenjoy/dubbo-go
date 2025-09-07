@@ -18,10 +18,16 @@
 package config
 
 import (
-	"dubbo.apache.org/dubbo-go/v3/common"
 	"github.com/dubbogo/gost/log/logger"
-	"github.com/pkg/errors"
 
+	"github.com/knadh/koanf"
+
+	"github.com/pkg/errors"
+)
+
+import (
+	"dubbo.apache.org/dubbo-go/v3/common"
+	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	_ "dubbo.apache.org/dubbo-go/v3/logger/core/logrus"
 	"dubbo.apache.org/dubbo-go/v3/logger/core/zap"
 )
@@ -35,22 +41,38 @@ func init() {
 	logger.SetLogger(log)
 }
 
-func Load(opts ...LoaderConfOption) (*RootConfig, error) {
-	conf, err := NewLoaderConf(opts...)
-	if err != nil {
-		return nil, err
-	}
+func Load(opts ...LoaderConfOption) error {
+	conf := NewLoaderConf(opts...)
 
 	koan := GetConfigResolver(conf)
 	if koan == nil {
-		return nil, errors.New("failed to resolve config")
+		return errors.New("failed to resolve config")
 	}
 
 	conf.MergeConfig(koan)
 
-	rc := &RootConfig{}
-	if err := koan.Unmarshal("", rc); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal config")
+	// 使用带有默认子配置的RootConfig，避免nil字段在Init时引发panic
+	rc := NewRootConfigBuilder().Build()
+	// 使用yaml标签并限定到根前缀进行反序列化
+	if err := koan.UnmarshalWithConf(rc.Prefix(), rc, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
+		return errors.Wrap(err, "failed to unmarshal config")
+	}
+
+	// 兜底：确保Protocols map存在且元素非nil，避免后续Init时或测试访问字段发生NPE
+	if rc.Protocols == nil {
+		rc.Protocols = make(map[string]*ProtocolConfig)
+	}
+	// 若存在协议分支但某个条目仍为nil，则对子树进行单独反序列化填充（使用yaml标签）
+	if raw := koan.Get(constant.DubboProtocol + ".protocols"); raw != nil {
+		if mm, ok := raw.(map[string]any); ok {
+			for name := range mm {
+				if rc.Protocols[name] == nil {
+					pc := &ProtocolConfig{}
+					_ = koan.Cut(constant.DubboProtocol+".protocols."+name).UnmarshalWithConf("", pc, koanf.UnmarshalConf{Tag: "yaml"})
+					rc.Protocols[name] = pc
+				}
+			}
+		}
 	}
 
 	// 设置全局配置，保持向后兼容
@@ -58,10 +80,10 @@ func Load(opts ...LoaderConfOption) (*RootConfig, error) {
 
 	// 初始化配置
 	if err := rc.Init(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return rc, nil
+	return nil
 }
 
 func check() error {
@@ -117,9 +139,3 @@ func IsProvider() bool {
 	currentRootConfig := GetAtomicRootConfig()
 	return len(currentRootConfig.Provider.Services) > 0
 }
-
-
-
-
-
-

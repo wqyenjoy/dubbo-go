@@ -20,10 +20,15 @@ package config
 import (
 	"fmt"
 	"strconv"
+)
 
+import (
+	"github.com/creasty/defaults"
+)
+
+import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
-	"github.com/creasty/defaults"
 )
 
 // MethodConfig defines method config
@@ -104,26 +109,4 @@ func (m *MethodConfig) check() error {
 		return err
 	}
 	return verify(m)
-}
-
-// DynamicUpdateProperties 动态更新方法配置属性
-func (m *MethodConfig) DynamicUpdateProperties(n *MethodConfig) {
-	if n == nil {
-		return
-	}
-
-	// 使用ApplyConfigUpdate函数进行安全更新
-	ApplyConfigUpdate(&m.InterfaceId, n.InterfaceId)
-	ApplyConfigUpdate(&m.InterfaceName, n.InterfaceName)
-	ApplyConfigUpdate(&m.Name, n.Name)
-	ApplyConfigUpdate(&m.Retries, n.Retries)
-	ApplyConfigUpdate(&m.LoadBalance, n.LoadBalance)
-	ApplyConfigUpdate(&m.Weight, n.Weight)
-	ApplyConfigUpdate(&m.TpsLimitInterval, n.TpsLimitInterval)
-	ApplyConfigUpdate(&m.TpsLimitRate, n.TpsLimitRate)
-	ApplyConfigUpdate(&m.TpsLimitStrategy, n.TpsLimitStrategy)
-	ApplyConfigUpdate(&m.ExecuteLimit, n.ExecuteLimit)
-	ApplyConfigUpdate(&m.ExecuteLimitRejectedHandler, n.ExecuteLimitRejectedHandler)
-	ApplyConfigUpdate(&m.Sticky, n.Sticky)
-	ApplyConfigUpdate(&m.RequestTimeout, n.RequestTimeout)
 }

@@ -19,24 +19,26 @@ package config
 
 import (
 	"testing"
+)
 
+import (
 	"github.com/dubbogo/gost/log/logger"
+
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLoggerInit(t *testing.T) {
 	t.Run("empty use default", func(t *testing.T) {
-		rc, err := Load(WithPath("./testdata/config/logger/empty_log.yaml"))
+		err := Load(WithPath("./testdata/config/logger/empty_log.yaml"))
 		assert.Nil(t, err)
-		assert.NotNil(t, rc)
+		assert.NotNil(t, rootConfig)
 		loggerConfig := rootConfig.Logger
 		assert.NotNil(t, loggerConfig)
 	})
 
 	t.Run("use config", func(t *testing.T) {
-		rc, err := Load(WithPath("./testdata/config/logger/log.yaml"))
+		err := Load(WithPath("./testdata/config/logger/log.yaml"))
 		assert.Nil(t, err)
-		assert.NotNil(t, rc)
 		loggerConfig := rootConfig.Logger
 		assert.NotNil(t, loggerConfig)
 		// default
@@ -44,9 +46,8 @@ func TestLoggerInit(t *testing.T) {
 	})
 
 	t.Run("use config with file", func(t *testing.T) {
-		rc, err := Load(WithPath("./testdata/config/logger/file_log.yaml"))
+		err := Load(WithPath("./testdata/config/logger/file_log.yaml"))
 		assert.Nil(t, err)
-		assert.NotNil(t, rc)
 		loggerConfig := rootConfig.Logger
 		assert.NotNil(t, loggerConfig)
 		logger.Debug("debug")

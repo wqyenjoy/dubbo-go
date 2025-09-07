@@ -20,10 +20,16 @@ package config
 import (
 	"strconv"
 	"sync"
+)
 
-	"dubbo.apache.org/dubbo-go/v3/common/constant"
+import (
 	"github.com/creasty/defaults"
+
 	"github.com/pkg/errors"
+)
+
+import (
+	"dubbo.apache.org/dubbo-go/v3/common/constant"
 )
 
 // ApplicationConfig is a configuration for current application, whether the application is a provider or a consumer
@@ -211,5 +217,19 @@ func (ac *ApplicationConfig) DynamicUpdateProperties(n *ApplicationConfig) {
 	// Notify listeners about the change
 	for _, listener := range ac.changeListeners {
 		go listener(oldConfig, ac.GetSnapshot())
+	}
+}
+
+// ApplyConfigUpdate updates a string field if the new value is non-empty and different
+func ApplyConfigUpdate(field *string, newValue string) {
+	if field == nil {
+		return
+	}
+	// Only apply when newValue is non-empty to avoid accidentally wiping configs
+	if newValue == "" {
+		return
+	}
+	if *field != newValue {
+		*field = newValue
 	}
 }

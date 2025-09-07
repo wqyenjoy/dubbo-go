@@ -20,14 +20,21 @@ package config
 import (
 	"fmt"
 	"sync"
+)
 
+import (
+	hessian "github.com/apache/dubbo-go-hessian2"
+
+	"github.com/dubbogo/gost/log/logger"
+
+	"github.com/knadh/koanf"
+)
+
+import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config_center"
 	"dubbo.apache.org/dubbo-go/v3/registry/exposed_tmp"
-	hessian "github.com/apache/dubbo-go-hessian2"
-	"github.com/dubbogo/gost/log/logger"
-	"github.com/knadh/koanf"
 )
 
 var (
@@ -66,6 +73,10 @@ func (rc *RootConfig) Prefix() string {
 }
 
 func GetRootConfig() *RootConfig {
+	// 优先返回包级变量，兼容测试直接赋值rootConfig的场景
+	if rootConfig != nil {
+		return rootConfig
+	}
 	return GetAtomicRootConfig()
 }
 
@@ -122,18 +133,8 @@ func registerPOJO() {
 // It's deprecated for user to call rootConfig.Init() manually, try config.Load(config.WithRootConfig(rootConfig)) instead.
 func (rc *RootConfig) Init() error {
 	registerPOJO()
-
-	// 确保Logger不为nil
-	if rc.Logger == nil {
-		rc.Logger = NewLoggerConfigBuilder().Build()
-	}
 	if err := rc.Logger.Init(); err != nil { // init default logger
 		return err
-	}
-
-	// 确保ConfigCenter不为nil
-	if rc.ConfigCenter == nil {
-		rc.ConfigCenter = NewConfigCenterConfigBuilder().Build()
 	}
 	if err := rc.ConfigCenter.Init(rc); err != nil {
 		logger.Infof("[Config Center] Config center doesn't start")
@@ -144,51 +145,13 @@ func (rc *RootConfig) Init() error {
 		}
 	}
 
-	// 确保Application不为nil
-	if rc.Application == nil {
-		rc.Application = NewApplicationConfigBuilder().Build()
-	}
 	if err := rc.Application.Init(); err != nil {
 		return err
 	}
 
-	// 确保Custom不为nil
-	if rc.Custom == nil {
-		rc.Custom = NewCustomConfigBuilder().Build()
-	}
 	// init user define
 	if err := rc.Custom.Init(); err != nil {
 		return err
-	}
-
-	// 确保Provider不为nil
-	if rc.Provider == nil {
-		rc.Provider = NewProviderConfigBuilder().Build()
-	}
-
-	// 确保Consumer不为nil
-	if rc.Consumer == nil {
-		rc.Consumer = NewConsumerConfigBuilder().Build()
-	}
-
-	// 确保Metrics不为nil
-	if rc.Metrics == nil {
-		rc.Metrics = NewMetricConfigBuilder().Build()
-	}
-
-	// 确保Otel不为nil
-	if rc.Otel == nil {
-		rc.Otel = NewOtelConfigBuilder().Build()
-	}
-
-	// 确保MetadataReport不为nil
-	if rc.MetadataReport == nil {
-		rc.MetadataReport = NewMetadataReportConfigBuilder().Build()
-	}
-
-	// 确保Shutdown不为nil
-	if rc.Shutdown == nil {
-		rc.Shutdown = NewShutDownConfigBuilder().Build()
 	}
 
 	// init protocol
@@ -396,18 +359,8 @@ func (rb *RootConfigBuilder) Build() *RootConfig {
 // Process receive changing listener's event, dynamic update config
 func (rc *RootConfig) Process(event *config_center.ConfigChangeEvent) {
 	logger.Infof("CenterConfig process event:\n%+v", event)
-
-	config, err := NewLoaderConf(WithBytes([]byte(event.Value.(string))))
-	if err != nil {
-		logger.Errorf("CenterConfig process failed to create loader config: %v", err)
-		return
-	}
-
+	config := NewLoaderConf(WithBytes([]byte(event.Value.(string))))
 	koan := GetConfigResolver(config)
-	if koan == nil {
-		logger.Errorf("CenterConfig process failed to resolve config")
-		return
-	}
 
 	updateRootConfig := &RootConfig{}
 	if err := koan.UnmarshalWithConf(rc.Prefix(),
@@ -415,133 +368,19 @@ func (rc *RootConfig) Process(event *config_center.ConfigChangeEvent) {
 		logger.Errorf("CenterConfig process unmarshalConf failed, got error %#v", err)
 		return
 	}
-
-	// 校验配置变更的合法性
-	if err := rc.validateConfigChange(updateRootConfig); err != nil {
-		logger.Warnf("Config change validation failed: %v, keeping current config", err)
-		return
-	}
-
-	// 原子替换配置，避免并发问题
-	rc.atomicUpdate(updateRootConfig)
-}
-
-// validateConfigChange 校验配置变更的合法性
-func (rc *RootConfig) validateConfigChange(updateRootConfig *RootConfig) error {
-	// 校验不可动态修改的字段
-	if updateRootConfig.Application != nil {
-		// 应用名称不允许动态修改
-		if updateRootConfig.Application.Name != "" &&
-			rc.Application != nil &&
-			updateRootConfig.Application.Name != rc.Application.Name {
-			return fmt.Errorf("application name cannot be changed dynamically: %s -> %s",
-				rc.Application.Name, updateRootConfig.Application.Name)
-		}
-	}
-
-	// 校验协议配置 - 端口等关键字段不允许动态修改
-	if len(updateRootConfig.Protocols) > 0 {
-		for protocolID, updateProtocol := range updateRootConfig.Protocols {
-			if currentProtocol, exists := rc.Protocols[protocolID]; exists {
-				if updateProtocol.Port != "" && updateProtocol.Port != currentProtocol.Port {
-					return fmt.Errorf("protocol %s port cannot be changed dynamically: %s -> %s",
-						protocolID, currentProtocol.Port, updateProtocol.Port)
-				}
-				if updateProtocol.Name != "" && updateProtocol.Name != currentProtocol.Name {
-					return fmt.Errorf("protocol %s name cannot be changed dynamically: %s -> %s",
-						protocolID, currentProtocol.Name, updateProtocol.Name)
-				}
-			}
-		}
-	}
-
-	// 校验TLS配置 - 证书文件等不允许动态修改
-	if updateRootConfig.TLSConfig != nil && rc.TLSConfig != nil {
-		if updateRootConfig.TLSConfig.TLSCertFile != "" && updateRootConfig.TLSConfig.TLSCertFile != rc.TLSConfig.TLSCertFile {
-			return fmt.Errorf("TLS cert file cannot be changed dynamically: %s -> %s",
-				rc.TLSConfig.TLSCertFile, updateRootConfig.TLSConfig.TLSCertFile)
-		}
-		if updateRootConfig.TLSConfig.TLSKeyFile != "" && updateRootConfig.TLSConfig.TLSKeyFile != rc.TLSConfig.TLSKeyFile {
-			return fmt.Errorf("TLS key file cannot be changed dynamically: %s -> %s",
-				rc.TLSConfig.TLSKeyFile, updateRootConfig.TLSConfig.TLSKeyFile)
-		}
-	}
-
-	return nil
-}
-
-// atomicUpdate 原子更新配置，避免并发问题
-func (rc *RootConfig) atomicUpdate(updateRootConfig *RootConfig) {
-	// 使用现有的配置更新机制，避免复杂的深拷贝
-	// 动态更新注册中心
+	// dynamically update register
 	for registerId, updateRegister := range updateRootConfig.Registries {
-		if register, exists := rc.Registries[registerId]; exists {
-			register.DynamicUpdateProperties(updateRegister)
-		} else {
-			// 新增注册中心
-			rc.Registries[registerId] = updateRegister
-		}
+		register := rc.Registries[registerId]
+		register.DynamicUpdateProperties(updateRegister)
 	}
+	// dynamically update consumer
+	rc.Consumer.DynamicUpdateProperties(updateRootConfig.Consumer)
 
-	// 动态更新消费者
-	if updateRootConfig.Consumer != nil {
-		rc.Consumer.DynamicUpdateProperties(updateRootConfig.Consumer)
-	}
+	// dynamically update logger
+	rc.Logger.DynamicUpdateProperties(updateRootConfig.Logger)
 
-	// 动态更新日志配置
-	if updateRootConfig.Logger != nil {
-		rc.Logger.DynamicUpdateProperties(updateRootConfig.Logger)
-	}
-
-	// 动态更新指标配置
-	if updateRootConfig.Metrics != nil {
-		rc.Metrics.DynamicUpdateProperties(updateRootConfig.Metrics)
-	}
-
-	// 动态更新应用配置
-	if updateRootConfig.Application != nil {
-		rc.Application.DynamicUpdateProperties(updateRootConfig.Application)
-	}
-
-	// 动态更新提供者配置
-	if updateRootConfig.Provider != nil {
-		rc.Provider.DynamicUpdateProperties(updateRootConfig.Provider)
-	}
-
-	// 其他配置直接替换（没有DynamicUpdateProperties方法）
-	if updateRootConfig.Otel != nil {
-		rc.Otel = updateRootConfig.Otel
-	}
-
-	if updateRootConfig.ConfigCenter != nil {
-		rc.ConfigCenter = updateRootConfig.ConfigCenter
-	}
-
-	if updateRootConfig.MetadataReport != nil {
-		rc.MetadataReport = updateRootConfig.MetadataReport
-	}
-
-	if updateRootConfig.Shutdown != nil {
-		rc.Shutdown = updateRootConfig.Shutdown
-	}
-
-	if updateRootConfig.Custom != nil {
-		rc.Custom = updateRootConfig.Custom
-	}
-
-	// TLS配置直接替换
-	if updateRootConfig.TLSConfig != nil {
-		rc.TLSConfig = updateRootConfig.TLSConfig
-	}
-
-	// 协议配置直接替换
-	if len(updateRootConfig.Protocols) > 0 {
-		for k, v := range updateRootConfig.Protocols {
-			rc.Protocols[k] = v
-		}
-	}
-
-	logger.Infof("Config updated successfully")
+	// dynamically update metric
+	rc.Metrics.DynamicUpdateProperties(updateRootConfig.Metrics)
 }
 
 // TODO：When config is migrated later, the impact of this will be migrated to the global module
