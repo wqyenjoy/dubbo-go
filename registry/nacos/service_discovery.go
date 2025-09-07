@@ -23,31 +23,32 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
-)
+	"time"
 
-import (
 	gxset "github.com/dubbogo/gost/container/set"
+
 	nacosClient "github.com/dubbogo/gost/database/kv/nacos"
+
 	gxpage "github.com/dubbogo/gost/hash/page"
 	"github.com/dubbogo/gost/log/logger"
-
 	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 
-	perrors "github.com/pkg/errors"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/registry"
 	"dubbo.apache.org/dubbo-go/v3/remoting/nacos"
+	perrors "github.com/pkg/errors"
 )
 
 const (
 	defaultGroup = constant.ServiceDiscoveryDefaultGroup
 	idKey        = "id"
+	// 更新操作的重试配置
+	maxUpdateRetries  = 3
+	retryDelayMs      = 100
+	backoffMultiplier = 2
 )
 
 func init() {
@@ -109,14 +110,77 @@ func (n *nacosServiceDiscovery) Register(instance registry.ServiceInstance) erro
 // Update will update the information
 // However, because nacos client doesn't support the update API,
 // so we should unregister the instance and then register it again.
-// the error handling is hard to implement
+//
+// To solve atomicity issues, this implementation provides:
+// 1. Retry mechanism with exponential backoff
+// 2. Rollback on failure to prevent service instance loss
+// 3. Comprehensive error logging
+// TODO: wait for nacos SDK to provide native update API
 func (n *nacosServiceDiscovery) Update(instance registry.ServiceInstance) error {
-	// TODO(wait for nacos support)
-	err := n.Unregister(instance)
-	if err != nil {
-		return perrors.WithStack(err)
+	logger.Infof("Starting nacos service instance update: %s@%s:%d",
+		instance.GetServiceName(), instance.GetHost(), instance.GetPort())
+
+	originalInstance := n.findRegisteredInstance(instance)
+
+	for attempt := 1; attempt <= maxUpdateRetries; attempt++ {
+		logger.Infof("Update attempt %d/%d", attempt, maxUpdateRetries)
+
+		unregisterErr := n.Unregister(instance)
+		if unregisterErr != nil {
+			logger.Errorf("Unregister failed (attempt %d/%d): %v", attempt, maxUpdateRetries, unregisterErr)
+			if attempt == maxUpdateRetries {
+				return perrors.WithMessage(unregisterErr, "Failed to unregister after max retries")
+			}
+			n.waitBeforeRetry(attempt)
+			continue
+		}
+
+		logger.Infof("Successfully unregistered instance, now registering new instance")
+
+		registerErr := n.Register(instance)
+		if registerErr == nil {
+			logger.Infof("Successfully updated service instance: %s", instance.GetServiceName())
+			return nil
+		}
+
+		logger.Errorf("Register failed (attempt %d/%d): %v", attempt, maxUpdateRetries, registerErr)
+
+		if originalInstance != nil {
+			logger.Warnf("Attempting rollback: re-registering original instance")
+			rollbackErr := n.Register(originalInstance)
+			if rollbackErr != nil {
+				logger.Errorf("Critical error: rollback failed, original instance cannot be registered: %v", rollbackErr)
+				return perrors.Errorf("Update failed and rollback failed, service instance may be lost: register_error=%v, rollback_error=%v",
+					registerErr, rollbackErr)
+			}
+			logger.Infof("Rollback successful, original instance restored")
+		}
+
+		if attempt < maxUpdateRetries {
+			n.waitBeforeRetry(attempt)
+		}
 	}
-	return n.Register(instance)
+
+	return perrors.New("Update failed after max retries")
+}
+
+// findRegisteredInstance finds the registered instance for rollback purposes
+func (n *nacosServiceDiscovery) findRegisteredInstance(instance registry.ServiceInstance) registry.ServiceInstance {
+	for _, registered := range n.registryInstances {
+		if registered.GetServiceName() == instance.GetServiceName() &&
+			registered.GetHost() == instance.GetHost() &&
+			registered.GetPort() == instance.GetPort() {
+			return registered
+		}
+	}
+	return nil
+}
+
+// waitBeforeRetry waits before retry with exponential backoff
+func (n *nacosServiceDiscovery) waitBeforeRetry(attempt int) {
+	delay := time.Duration(retryDelayMs*int(math.Pow(float64(backoffMultiplier), float64(attempt-1)))) * time.Millisecond
+	logger.Infof("Waiting %v before retry %d", delay, attempt+1)
+	time.Sleep(delay)
 }
 
 // Unregister will unregister the instance
