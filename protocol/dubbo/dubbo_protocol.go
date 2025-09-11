@@ -22,15 +22,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
-)
 
-import (
-	"github.com/dubbogo/gost/log/logger"
-
-	"github.com/opentracing/opentracing-go"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
@@ -41,6 +33,8 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
 	"dubbo.apache.org/dubbo-go/v3/remoting"
 	"dubbo.apache.org/dubbo-go/v3/remoting/getty"
+	"github.com/dubbogo/gost/log/logger"
+	"github.com/opentracing/opentracing-go"
 )
 
 const (
@@ -180,79 +174,97 @@ func doHandleRequest(rpcInvocation *invocation.RPCInvocation) result.RPCResult {
 
 func getExchangeClient(url *common.URL) *remoting.ExchangeClient {
 	clientTmp, ok := exchangeClientMap.Load(url.Location)
-	if !ok {
-		var exchangeClientTmp *remoting.ExchangeClient
-		func() {
-			// lock for NewExchangeClient and store into map.
-			_, loaded := exchangeLock.LoadOrStore(url.Location, 0x00)
-			// unlock
-			defer exchangeLock.Delete(url.Location)
-			if loaded {
-				// retry for 5 times.
-				for i := 0; i < 5; i++ {
-					if clientTmp, ok = exchangeClientMap.Load(url.Location); ok {
-						break
-					} else {
-						// if cannot get, sleep a while.
-						time.Sleep(time.Duration(i*100) * time.Millisecond)
-					}
-				}
-				return
-			}
+	if ok {
+		exchangeClient := clientTmp.(*remoting.ExchangeClient)
 
-			// get timeout from config, compatible with consumer config
-			var requestTimeout time.Duration = 3 * time.Second
-			var connectTimeout time.Duration = 3 * time.Second
+		// Issue #1868 Fix: Check connection health before reusing
+		// This prevents reusing stale connections that cause i/o timeout
+		if !exchangeClient.IsAvailable() {
+			logger.Warnf("Found stale connection for %s, removing from pool", url.Location)
 
-			// try to get timeout from consumer config first for backwards compatibility
-			// Use the same approach as dubbo_invoker.go
-			rt := config.GetConsumerConfig().RequestTimeout
-			if consumerConfRaw, ok := url.GetAttribute(constant.ConsumerConfigKey); ok {
-				if consumerConf, ok := consumerConfRaw.(*global.ConsumerConfig); ok {
-					rt = consumerConf.RequestTimeout
-				}
-			}
+			// Remove stale connection from pool
+			exchangeClientMap.Delete(url.Location)
+			exchangeClient.Close()
 
-			if rt != "" {
-				if timeout, err := time.ParseDuration(rt); err == nil {
-					requestTimeout = timeout
-					connectTimeout = timeout
-				}
-			}
-
-			// override with url specific timeout if provided (url parameter takes precedence)
-			if timeoutStr := url.GetParam(constant.TimeoutKey, ""); timeoutStr != "" {
-				if timeout, err := time.ParseDuration(timeoutStr); err == nil {
-					requestTimeout = timeout
-					connectTimeout = timeout
-				}
-			}
-
-			// Create getty client with proper timeout configuration
-			// Key insight: request-timeout should not affect heartbeat mechanism
-			// Getty client will initialize its own heartbeat configuration independently
-			client := getty.NewClient(getty.Options{
-				ConnectTimeout: connectTimeout,
-				RequestTimeout: requestTimeout,
-			})
-
-			exchangeClientTmp = remoting.NewExchangeClient(url, client, requestTimeout, false)
-			// input store
-			if exchangeClientTmp != nil {
-				exchangeClientMap.Store(url.Location, exchangeClientTmp)
-			}
-		}()
-		if exchangeClientTmp != nil {
-			return exchangeClientTmp
+			// Create new connection
+			return createNewExchangeClient(url)
 		}
+
+		exchangeClient.IncreaseActiveNumber()
+		return exchangeClient
 	}
-	// cannot dial the server
-	if clientTmp == nil {
-		return nil
+
+	return createNewExchangeClient(url)
+}
+
+func createNewExchangeClient(url *common.URL) *remoting.ExchangeClient {
+	var exchangeClientTmp *remoting.ExchangeClient
+	func() {
+		// lock for NewExchangeClient and store into map.
+		_, loaded := exchangeLock.LoadOrStore(url.Location, 0x00)
+		// unlock
+		defer exchangeLock.Delete(url.Location)
+		if loaded {
+			// retry for 5 times.
+			for i := 0; i < 5; i++ {
+				if clientTmp, ok := exchangeClientMap.Load(url.Location); ok {
+					exchangeClientTmp = clientTmp.(*remoting.ExchangeClient)
+					break
+				} else {
+					// if cannot get, sleep a while.
+					time.Sleep(time.Duration(i*100) * time.Millisecond)
+				}
+			}
+			return
+		}
+
+		// get timeout from config, compatible with consumer config
+		var requestTimeout time.Duration = 3 * time.Second
+		var connectTimeout time.Duration = 3 * time.Second
+
+		// try to get timeout from consumer config first for backwards compatibility
+		// Use the same approach as dubbo_invoker.go
+		rt := config.GetConsumerConfig().RequestTimeout
+		if consumerConfRaw, ok := url.GetAttribute(constant.ConsumerConfigKey); ok {
+			if consumerConf, ok := consumerConfRaw.(*global.ConsumerConfig); ok {
+				rt = consumerConf.RequestTimeout
+			}
+		}
+
+		if rt != "" {
+			if timeout, err := time.ParseDuration(rt); err == nil {
+				requestTimeout = timeout
+				connectTimeout = timeout
+			}
+		}
+
+		// override with url specific timeout if provided (url parameter takes precedence)
+		if timeoutStr := url.GetParam(constant.TimeoutKey, ""); timeoutStr != "" {
+			if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+				requestTimeout = timeout
+				connectTimeout = timeout
+			}
+		}
+
+		// Create getty client with proper timeout configuration
+		// Key insight: request-timeout should not affect heartbeat mechanism
+		// Getty client will initialize its own heartbeat configuration independently
+		client := getty.NewClient(getty.Options{
+			ConnectTimeout: connectTimeout,
+			RequestTimeout: requestTimeout,
+		})
+
+		exchangeClientTmp = remoting.NewExchangeClient(url, client, requestTimeout, false)
+		// input store
+		if exchangeClientTmp != nil {
+			exchangeClientMap.Store(url.Location, exchangeClientTmp)
+		}
+	}()
+	if exchangeClientTmp != nil {
+		return exchangeClientTmp
 	}
-	exchangeClient := clientTmp.(*remoting.ExchangeClient)
-	exchangeClient.IncreaseActiveNumber()
-	return exchangeClient
+
+	return exchangeClientTmp
 }
 
 // rebuildCtx rebuild the context by attachment.
