@@ -22,23 +22,19 @@ import (
 	"fmt"
 	"sync"
 	"time"
-)
 
-import (
-	"github.com/dubbogo/gost/log/logger"
-
-	"github.com/opentracing/opentracing-go"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
+	"dubbo.apache.org/dubbo-go/v3/config"
+	"dubbo.apache.org/dubbo-go/v3/global"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/invocation"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
 	"dubbo.apache.org/dubbo-go/v3/remoting"
 	"dubbo.apache.org/dubbo-go/v3/remoting/getty"
+	"github.com/dubbogo/gost/log/logger"
+	"github.com/opentracing/opentracing-go"
 )
 
 const (
@@ -198,11 +194,43 @@ func getExchangeClient(url *common.URL) *remoting.ExchangeClient {
 				return
 			}
 
-			// todo set by config
-			exchangeClientTmp = remoting.NewExchangeClient(url, getty.NewClient(getty.Options{
-				ConnectTimeout: 3 * time.Second,
-				RequestTimeout: 3 * time.Second,
-			}), 3*time.Second, false)
+			// get timeout from config, compatible with consumer config
+			var requestTimeout time.Duration = 3 * time.Second
+			var connectTimeout time.Duration = 3 * time.Second
+
+			// try to get timeout from consumer config first for backwards compatibility
+			// Use the same approach as dubbo_invoker.go
+			rt := config.GetConsumerConfig().RequestTimeout
+			if consumerConfRaw, ok := url.GetAttribute(constant.ConsumerConfigKey); ok {
+				if consumerConf, ok := consumerConfRaw.(*global.ConsumerConfig); ok {
+					rt = consumerConf.RequestTimeout
+				}
+			}
+
+			if rt != "" {
+				if timeout, err := time.ParseDuration(rt); err == nil {
+					requestTimeout = timeout
+					connectTimeout = timeout
+				}
+			}
+
+			// override with url specific timeout if provided (url parameter takes precedence)
+			if timeoutStr := url.GetParam(constant.TimeoutKey, ""); timeoutStr != "" {
+				if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+					requestTimeout = timeout
+					connectTimeout = timeout
+				}
+			}
+
+			// Create getty client with proper timeout configuration
+			// Key insight: request-timeout should not affect heartbeat mechanism
+			// Getty client will initialize its own heartbeat configuration independently
+			client := getty.NewClient(getty.Options{
+				ConnectTimeout: connectTimeout,
+				RequestTimeout: requestTimeout,
+			})
+
+			exchangeClientTmp = remoting.NewExchangeClient(url, client, requestTimeout, false)
 			// input store
 			if exchangeClientTmp != nil {
 				exchangeClientMap.Store(url.Location, exchangeClientTmp)
