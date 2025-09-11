@@ -21,30 +21,20 @@ import (
 	"strings"
 	"testing"
 	"time"
-)
 
-import (
-	"github.com/stretchr/testify/assert"
-)
-
-import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config"
 	"dubbo.apache.org/dubbo-go/v3/remoting/getty"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestIssue1868CompleteVerification provides comprehensive testing for Issue #1868
 // This test covers: root cause analysis, original reproduction, fix verification,
 // integration testing, real-world scenarios, and performance impact
 func TestIssue1868CompleteVerification(t *testing.T) {
-	t.Log("🔬 Issue #1868 Complete Verification Suite")
-	t.Log("===========================================")
-
 	// Test 1: Root Cause Analysis
 	t.Run("RootCauseAnalysis", func(t *testing.T) {
-		t.Log("🔍 Root Cause Analysis")
-
 		// Setup user's problematic configuration
 		config.SetConsumerConfig(config.ConsumerConfig{
 			RequestTimeout: "60s", // User's 60-second timeout setting
@@ -58,34 +48,18 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 		gettyConfig := getty.GetDefaultClientConfig()
 		gettyTcpTimeout, _ := time.ParseDuration(gettyConfig.GettySessionParam.TcpWriteTimeout)
 
-		t.Logf("   📊 User expectation: %v timeout", userTimeout)
-		t.Logf("   📊 Getty provides: %v TCP write timeout", gettyTcpTimeout)
-
 		// Verify the root cause
 		assert.True(t, userTimeout > gettyTcpTimeout,
 			"User timeout should be greater than Getty default to trigger the issue")
 
 		if userTimeout > gettyTcpTimeout {
-			t.Log("   🚨 ROOT CAUSE CONFIRMED:")
-			t.Logf("      User sets request-timeout: %v (expecting RPC calls can wait %v)", userTimeout, userTimeout)
-			t.Logf("      But Getty TcpWriteTimeout: %v (TCP write operations timeout after %v)", gettyTcpTimeout, gettyTcpTimeout)
-			t.Log("      Result: 'write tcp i/o timeout' after 5 seconds, not 60 seconds")
+			t.Logf("ROOT CAUSE: User timeout (%v) > Getty TCP timeout (%v)", userTimeout, gettyTcpTimeout)
+			t.Log("This causes 'write tcp i/o timeout' before user's request timeout expires")
 		}
-
-		t.Log("   ✅ Root cause analysis completed")
 	})
 
 	// Test 2: Original Issue Reproduction
 	t.Run("OriginalReproduction", func(t *testing.T) {
-		t.Log("📋 Original Issue Reproduction")
-
-		t.Log("   Original Issue Description:")
-		t.Log("      Problem: i/o timeout after calling service multiple times")
-		t.Log("      Pattern: for i := 0; i < 100; i++ { time.Sleep(time.Second * 2); xxx() }")
-		t.Log("      Config: consumer.request-timeout: 60s")
-		t.Log("      Protocol: dubbo")
-		t.Log("      Error: write tcp xxx: i/o timeout")
-
 		// Setup original user configuration
 		config.SetConsumerConfig(config.ConsumerConfig{
 			RequestTimeout: "60s",
@@ -93,7 +67,7 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 
 		// Create service URL matching user's scenario
 		url, err := common.NewURL("dubbo://192.168.1.122:20729/com.test.TestService")
-		assert.NoError(t, err, "Should create URL successfully")
+		assert.NoError(t, err)
 		url.SetParam(constant.TimeoutKey, "60s")
 		url.SetParam(constant.ProtocolKey, "dubbo")
 
@@ -102,23 +76,17 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 		gettyConfig := getty.GetDefaultClientConfig()
 		gettyTcpTimeout := gettyConfig.GettySessionParam.TcpWriteTimeout
 
-		t.Logf("   📊 URL timeout parameter: %s", urlTimeout)
-		t.Logf("   📊 Getty default TcpWriteTimeout: %s", gettyTcpTimeout)
+		assert.Equal(t, "60s", urlTimeout)
+		assert.Equal(t, "5s", gettyTcpTimeout)
 
 		// Simulate user's call pattern
-		t.Log("   🔄 Simulating user's call pattern...")
 		callCount := 3 // Reduced for testing
 		for i := 0; i < callCount; i++ {
-			t.Logf("      Call %d/%d: Checking timeout configuration...", i+1, callCount)
-
 			timeoutParam := url.GetParam(constant.TimeoutKey, "")
 			if timeoutParam != "" {
 				timeout, err := time.ParseDuration(timeoutParam)
 				if err == nil && timeout > 5*time.Second {
-					t.Logf("         🚨 Call %d: Potential i/o timeout risk!", i+1)
-					t.Logf("         📊 Expected timeout: %v", timeout)
-					t.Logf("         📊 Actual TCP timeout: 5s")
-					t.Log("         💡 With our fix: Getty TcpWriteTimeout would be adjusted")
+					t.Logf("Call %d: timeout %v > 5s TCP timeout - would cause i/o timeout", i+1, timeout)
 				}
 			}
 
@@ -131,21 +99,11 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 		originalError := "[CallProxy] received rpc err: write tcp 192.168.1.122:57283->192.168.1.122:20729: i/o timeout"
 		isTargetError := strings.Contains(originalError, "write tcp") &&
 			strings.Contains(originalError, "i/o timeout")
-		assert.True(t, isTargetError, "Should recognize the target error pattern")
-
-		t.Log("   ✅ Original issue reproduction completed")
+		assert.True(t, isTargetError)
 	})
 
 	// Test 3: Fix Logic Verification
 	t.Run("FixLogicVerification", func(t *testing.T) {
-		t.Log("🔧 Fix Logic Verification")
-
-		t.Log("   ✅ What we fixed:")
-		t.Log("      1. Modified initClient(url) in remoting/getty/getty_client.go")
-		t.Log("      2. Added URL timeout parameter processing")
-		t.Log("      3. Dynamically adjust clientConf.GettySessionParam.TcpWriteTimeout")
-		t.Log("      4. Ensure TcpWriteTimeout >= request-timeout from URL")
-
 		// Test different timeout scenarios
 		scenarios := []struct {
 			name         string
@@ -162,9 +120,6 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 				url, _ := common.NewURL("dubbo://127.0.0.1:20000/com.test.Service")
 				url.SetParam(constant.TimeoutKey, scenario.timeout)
 
-				t.Logf("      URL: %s", url.String())
-				t.Logf("      Timeout parameter: %s", scenario.timeout)
-
 				// Simulate fix logic
 				timeoutStr := url.GetParam(constant.TimeoutKey, "")
 				if timeoutStr != "" {
@@ -172,27 +127,21 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 						gettyConfig := getty.GetDefaultClientConfig()
 						originalTcpTimeout, _ := time.ParseDuration(gettyConfig.GettySessionParam.TcpWriteTimeout)
 
-						t.Logf("      Original Getty TcpWriteTimeout: %v", originalTcpTimeout)
-
 						if timeout > originalTcpTimeout {
-							t.Logf("      ✅ Should adjust TcpWriteTimeout from %v to %v", originalTcpTimeout, timeout)
 							assert.True(t, scenario.shouldAdjust, "Should require adjustment")
+							t.Logf("Should adjust TcpWriteTimeout from %v to %v", originalTcpTimeout, timeout)
 						} else {
-							t.Logf("      ✅ Should keep default TcpWriteTimeout %v", originalTcpTimeout)
 							assert.False(t, scenario.shouldAdjust, "Should not require adjustment")
+							t.Logf("Should keep default TcpWriteTimeout %v", originalTcpTimeout)
 						}
 					}
 				}
 			})
 		}
-
-		t.Log("   ✅ Fix logic verification completed")
 	})
 
 	// Test 4: Integration Testing
 	t.Run("IntegrationTesting", func(t *testing.T) {
-		t.Log("🔗 Integration Testing")
-
 		// Test boundary cases
 		testCases := []struct {
 			name         string
@@ -214,41 +163,31 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 				timeout, _ := time.ParseDuration(tc.timeout)
 				defaultTimeout := 5 * time.Second
 
-				t.Logf("      🔬 %s: %v vs %v default", tc.name, timeout, defaultTimeout)
-
 				if tc.shouldAdjust {
-					assert.True(t, timeout > defaultTimeout, "Should be greater than default")
-					t.Logf("         ✅ Should adjust Getty TcpWriteTimeout to %v", timeout)
+					assert.True(t, timeout > defaultTimeout)
 				} else {
-					assert.True(t, timeout <= defaultTimeout, "Should be less than or equal to default")
-					t.Logf("         ✅ Should keep default Getty TcpWriteTimeout %v", defaultTimeout)
+					assert.True(t, timeout <= defaultTimeout)
 				}
 			})
 		}
 
 		// Test backward compatibility
-		t.Log("   🔄 Testing backward compatibility...")
+		t.Run("BackwardCompatibility", func(t *testing.T) {
+			// Case 1: No timeout parameter
+			url1, _ := common.NewURL("dubbo://127.0.0.1:20888/com.test.Service")
+			timeoutParam1 := url1.GetParam(constant.TimeoutKey, "")
+			assert.Empty(t, timeoutParam1)
 
-		// Case 1: No timeout parameter
-		url1, _ := common.NewURL("dubbo://127.0.0.1:20888/com.test.Service")
-		timeoutParam1 := url1.GetParam(constant.TimeoutKey, "")
-		assert.Empty(t, timeoutParam1, "Should have no timeout parameter")
-		t.Log("      ✅ No timeout parameter - should use default behavior")
-
-		// Case 2: Invalid timeout parameter
-		url2, _ := common.NewURL("dubbo://127.0.0.1:20888/com.test.Service")
-		url2.SetParam(constant.TimeoutKey, "invalid")
-		if _, err := time.ParseDuration(url2.GetParam(constant.TimeoutKey, "")); err != nil {
-			t.Log("      ✅ Invalid timeout parameter - should use default behavior")
-		}
-
-		t.Log("   ✅ Integration testing completed")
+			// Case 2: Invalid timeout parameter
+			url2, _ := common.NewURL("dubbo://127.0.0.1:20888/com.test.Service")
+			url2.SetParam(constant.TimeoutKey, "invalid")
+			_, err := time.ParseDuration(url2.GetParam(constant.TimeoutKey, ""))
+			assert.Error(t, err)
+		})
 	})
 
 	// Test 5: Real World Scenarios
 	t.Run("RealWorldScenarios", func(t *testing.T) {
-		t.Log("🌍 Real World Scenarios")
-
 		scenarios := []struct {
 			name        string
 			description string
@@ -264,31 +203,22 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 
 		for _, scenario := range scenarios {
 			t.Run(scenario.name, func(t *testing.T) {
-				t.Logf("      🏢 Scenario: %s", scenario.description)
-
 				timeout, _ := time.ParseDuration(scenario.timeout)
 				defaultTimeout := 5 * time.Second
 
 				if scenario.expectFix {
-					assert.True(t, timeout > defaultTimeout, "Should require fix")
-					t.Logf("         ❌ BEFORE Fix: Would get i/o timeout after %v", defaultTimeout)
-					t.Logf("         ✅ AFTER Fix: Can utilize full %v timeout", timeout)
-					t.Log("         🎉 Problem SOLVED for this scenario!")
+					assert.True(t, timeout > defaultTimeout)
+					t.Logf("Scenario '%s' requires fix: %v > %v", scenario.name, timeout, defaultTimeout)
 				} else {
-					assert.True(t, timeout <= defaultTimeout, "Should not require fix")
-					t.Logf("         ✅ No problem: %v <= %v (default)", timeout, defaultTimeout)
-					t.Log("         ✅ Works fine both before and after fix")
+					assert.True(t, timeout <= defaultTimeout)
+					t.Logf("Scenario '%s' works fine: %v <= %v", scenario.name, timeout, defaultTimeout)
 				}
 			})
 		}
-
-		t.Log("   🏆 All real-world scenarios tested successfully!")
 	})
 
 	// Test 6: Performance Impact
 	t.Run("PerformanceImpact", func(t *testing.T) {
-		t.Log("⚡ Performance Impact Test")
-
 		// Measure the performance of our fix logic
 		iterations := 1000
 		url, _ := common.NewURL("dubbo://127.0.0.1:20888/com.test.Service")
@@ -309,30 +239,14 @@ func TestIssue1868CompleteVerification(t *testing.T) {
 		}
 		elapsed := time.Since(start)
 
-		t.Log("   📊 Performance Results:")
-		t.Logf("      Total iterations: %d", iterations)
-		t.Logf("      Total time: %v", elapsed)
-		t.Logf("      Average per operation: %v", elapsed/time.Duration(iterations))
-
 		avgNanos := elapsed.Nanoseconds() / int64(iterations)
-		if avgNanos < 1000 { // Less than 1 microsecond
-			t.Log("      ✅ Excellent: Fix has negligible performance impact")
-		} else if avgNanos < 10000 { // Less than 10 microseconds
-			t.Log("      ✅ Good: Fix has minimal performance impact")
-		} else {
-			t.Log("      ⚠️  Consider optimization if this becomes a bottleneck")
-		}
-
-		t.Log("   🎉 Performance impact test completed!")
+		t.Logf("Performance: %d iterations in %v, avg %dns per operation", iterations, elapsed, avgNanos)
+		assert.True(t, avgNanos < 10000, "Fix should have minimal performance impact")
 	})
-
-	t.Log("🎉 Issue #1868 Complete Verification Suite - ALL PASSED!")
 }
 
 // TestIssue1868BeforeAfterComparison compares behavior before and after fix
 func TestIssue1868BeforeAfterComparison(t *testing.T) {
-	t.Log("📊 Issue #1868: Before vs After Fix Comparison")
-
 	scenarios := []struct {
 		name        string
 		timeout     string
@@ -346,62 +260,48 @@ func TestIssue1868BeforeAfterComparison(t *testing.T) {
 
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
-			t.Logf("      🧪 Testing %s: %s", scenario.name, scenario.description)
-
 			timeout, _ := time.ParseDuration(scenario.timeout)
 			defaultTcpTimeout := 5 * time.Second
 
-			t.Logf("         📊 Request timeout: %v", timeout)
-			t.Logf("         📊 Default TCP write timeout: %v", defaultTcpTimeout)
-
 			if timeout > defaultTcpTimeout {
-				t.Logf("         ❌ BEFORE Fix: TCP write timeout (%v) < Request timeout (%v)", defaultTcpTimeout, timeout)
-				t.Log("            Result: 'write tcp i/o timeout' after 5 seconds")
-				t.Logf("         ✅ AFTER Fix: TCP write timeout adjusted to %v", timeout)
-				t.Log("            Result: No premature i/o timeout, full request timeout available")
-				t.Log("            🔧 Our fix would adjust Getty TcpWriteTimeout for this case")
+				t.Logf("BEFORE Fix: TCP timeout (%v) < Request timeout (%v) - would cause i/o timeout",
+					defaultTcpTimeout, timeout)
+				t.Logf("AFTER Fix: TCP timeout adjusted to %v - no premature timeout", timeout)
 			} else {
-				t.Logf("         ✅ No problem: TCP write timeout (%v) >= Request timeout (%v)", defaultTcpTimeout, timeout)
-				t.Log("            Result: Works fine both before and after fix")
-				t.Log("            🔧 Our fix would keep default Getty TcpWriteTimeout for this case")
+				t.Logf("No problem: TCP timeout (%v) >= Request timeout (%v)", defaultTcpTimeout, timeout)
+			}
+
+			// Verify the scenario classification is correct
+			if strings.Contains(scenario.description, "would cause i/o timeout") ||
+				strings.Contains(scenario.description, "severe mismatch") {
+				assert.True(t, timeout > defaultTcpTimeout)
+			} else {
+				assert.True(t, timeout <= defaultTcpTimeout)
 			}
 		})
 	}
-
-	t.Log("   🎉 Comparison completed - our fix addresses all problematic cases!")
 }
 
 // TestIssue1868HeartbeatVerification verifies heartbeat mechanism is not affected
 func TestIssue1868HeartbeatVerification(t *testing.T) {
-	t.Log("💓 Heartbeat Mechanism Verification")
-
 	// Verify that our fix doesn't affect heartbeat
 	gettyConfig := getty.GetDefaultClientConfig()
 
-	t.Log("   📊 Getty Heartbeat Configuration:")
-	t.Logf("      HeartbeatPeriod: %s", gettyConfig.HeartbeatPeriod)
-	t.Logf("      SessionTimeout: %s", gettyConfig.SessionTimeout)
-	t.Logf("      TcpWriteTimeout: %s", gettyConfig.GettySessionParam.TcpWriteTimeout)
-
 	// Parse heartbeat period
 	heartbeatPeriod, err := time.ParseDuration(gettyConfig.HeartbeatPeriod)
-	assert.NoError(t, err, "Should parse heartbeat period successfully")
+	assert.NoError(t, err)
 
 	// Verify heartbeat is reasonable
-	assert.True(t, heartbeatPeriod > 0, "Heartbeat period should be positive")
-	assert.True(t, heartbeatPeriod >= 10*time.Second, "Heartbeat period should be at least 10 seconds")
+	assert.True(t, heartbeatPeriod > 0)
+	assert.True(t, heartbeatPeriod >= 10*time.Second)
 
-	t.Log("   ✅ Heartbeat mechanism analysis:")
-	t.Logf("      Heartbeat period: %v (reasonable for connection keep-alive)", heartbeatPeriod)
-	t.Log("      Our fix only adjusts TcpWriteTimeout, not heartbeat settings")
-	t.Log("      Heartbeat mechanism remains fully functional")
+	t.Logf("Heartbeat period: %v", heartbeatPeriod)
+	t.Log("Fix only adjusts TcpWriteTimeout, not heartbeat settings")
 
 	// Test that our timeout adjustment doesn't conflict with heartbeat
 	longTimeout := 60 * time.Second
 	if longTimeout > heartbeatPeriod {
-		t.Logf("      ✅ Long timeout (%v) > heartbeat period (%v): Compatible", longTimeout, heartbeatPeriod)
-		t.Log("         Heartbeat will keep connection alive during long operations")
+		t.Logf("Long timeout (%v) > heartbeat period (%v): Compatible", longTimeout, heartbeatPeriod)
+		t.Log("Heartbeat will keep connection alive during long operations")
 	}
-
-	t.Log("   🎉 Heartbeat verification completed - no conflicts with our fix!")
 }
