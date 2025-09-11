@@ -117,6 +117,27 @@ func initClient(url *common.URL) {
 			panic(err)
 		}
 	}
+
+	// 🔧 Issue #1868 Fix: Handle URL timeout parameter for Getty TcpWriteTimeout
+	// The real problem: initClient(url) was ignoring URL timeout parameters
+	// This caused Getty's TcpWriteTimeout (5s) to be mismatched with user's request-timeout (60s)
+	if timeoutStr := url.GetParam(constant.TimeoutKey, ""); timeoutStr != "" {
+		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+			// Parse current TcpWriteTimeout
+			currentTcpWriteTimeout, parseErr := time.ParseDuration(clientConf.GettySessionParam.TcpWriteTimeout)
+			if parseErr != nil {
+				currentTcpWriteTimeout = 5 * time.Second // fallback to default
+			}
+
+			// Ensure TCP write timeout >= RPC request timeout to prevent premature i/o timeout
+			if timeout > currentTcpWriteTimeout {
+				clientConf.GettySessionParam.TcpWriteTimeout = timeout.String()
+				logger.Infof("Getty TcpWriteTimeout adjusted from %v to %v for URL timeout parameter",
+					currentTcpWriteTimeout, timeout)
+			}
+		}
+	}
+
 	if err := clientConf.CheckValidity(); err != nil {
 		logger.Warnf("[CheckValidity] error: %v", err)
 		return
