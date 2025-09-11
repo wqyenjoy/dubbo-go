@@ -20,12 +20,17 @@ package dubbo
 import (
 	"testing"
 	"time"
+)
 
+import (
+	"github.com/stretchr/testify/assert"
+)
+
+import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config"
 	"dubbo.apache.org/dubbo-go/v3/global"
-	"github.com/stretchr/testify/assert"
 )
 
 // TestIssue1868TimeoutConfiguration tests the fix for Issue #1868
