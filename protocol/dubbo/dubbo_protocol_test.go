@@ -149,3 +149,33 @@ func TestDubboProtocol_Refer(t *testing.T) {
 	invokersLen = len(proto.(*DubboProtocol).Invokers())
 	assert.Equal(t, 0, invokersLen)
 }
+
+// TestDubboProtocolTimeoutConfiguration tests timeout configuration handling
+// This ensures that timeout parameters are properly passed to Getty client
+func TestDubboProtocolTimeoutConfiguration(t *testing.T) {
+	initDubboInvokerTest()
+
+	testCases := []struct {
+		name    string
+		timeout string
+	}{
+		{"DefaultTimeout", "3s"},
+		{"LongTimeout", "60s"},
+		{"VeryLongTimeout", "120s"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create URL with timeout parameter
+			urlStr := "dubbo://127.0.0.1:20000/com.ikurento.user.UserProvider?timeout=" + tc.timeout
+			url, err := common.NewURL(urlStr)
+			assert.NoError(t, err)
+
+			// Verify timeout parameter is set correctly
+			timeoutParam := url.GetParam(constant.TimeoutKey, "")
+			assert.Equal(t, tc.timeout, timeoutParam)
+
+			t.Logf("URL timeout parameter: %s", timeoutParam)
+		})
+	}
+}

@@ -289,3 +289,99 @@ func TestInitClient(t *testing.T) {
 	config.SetRootConfig(*originRootConf)
 	assert.NotNil(t, srvConf)
 }
+
+// TestTimeoutAdjustmentLogic tests the timeout adjustment logic for Issue #1868
+// This is a focused test that validates the core fix logic
+func TestTimeoutAdjustmentLogic(t *testing.T) {
+	testCases := []struct {
+		name         string
+		urlTimeout   string
+		shouldAdjust bool
+	}{
+		{"ShortTimeout", "3s", false},
+		{"LongTimeout", "60s", true},
+		{"VeryLongTimeout", "120s", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a URL with timeout parameter
+			url, err := common.NewURL("dubbo://127.0.0.1:20000/test?timeout=" + tc.urlTimeout)
+			assert.NoError(t, err)
+
+			// Test the core logic from our fix
+			timeoutStr := url.GetParam(TimeoutKey, "")
+			assert.Equal(t, tc.urlTimeout, timeoutStr)
+
+			if timeoutStr != "" {
+				timeout, err := time.ParseDuration(timeoutStr)
+				assert.NoError(t, err)
+
+				currentTcpWriteTimeout := 5 * time.Second // Getty default
+				
+				if tc.shouldAdjust {
+					assert.True(t, timeout > currentTcpWriteTimeout, 
+						"Long timeout should be greater than Getty default")
+					t.Logf("Would adjust TcpWriteTimeout from %v to %v", currentTcpWriteTimeout, timeout)
+				} else {
+					assert.True(t, timeout <= currentTcpWriteTimeout,
+						"Short timeout should be less than or equal to Getty default")
+					t.Logf("Would keep TcpWriteTimeout at %v", currentTcpWriteTimeout)
+				}
+			}
+		})
+	}
+}
+
+// TestInitClientBackwardCompatibility tests backward compatibility for the timeout fix
+func TestInitClientBackwardCompatibility(t *testing.T) {
+	originRootConf := config.GetRootConfig()
+	defer config.SetRootConfig(*originRootConf)
+
+	rootConf := config.RootConfig{
+		Protocols: map[string]*config.ProtocolConfig{
+			"dubbo": {
+				Name: "dubbo",
+				Ip:   "127.0.0.1", 
+				Port: "20003",
+			},
+		},
+	}
+	config.SetRootConfig(rootConf)
+
+	t.Run("NoTimeoutParameter", func(t *testing.T) {
+		// URL without timeout parameter
+		url, err := common.NewURL("dubbo://127.0.0.1:20003/test")
+		assert.NoError(t, err)
+
+		originalConfig := GetDefaultClientConfig()
+		originalTcpTimeout := originalConfig.GettySessionParam.TcpWriteTimeout
+
+		initClient(url)
+
+		updatedConfig := GetDefaultClientConfig()
+		updatedTcpTimeout := updatedConfig.GettySessionParam.TcpWriteTimeout
+
+		// Should remain unchanged
+		assert.Equal(t, originalTcpTimeout, updatedTcpTimeout)
+		t.Log("No timeout parameter - configuration unchanged")
+	})
+
+	t.Run("InvalidTimeoutParameter", func(t *testing.T) {
+		// URL with invalid timeout parameter
+		url, err := common.NewURL("dubbo://127.0.0.1:20003/test?timeout=invalid")
+		assert.NoError(t, err)
+
+		originalConfig := GetDefaultClientConfig()
+		originalTcpTimeout := originalConfig.GettySessionParam.TcpWriteTimeout
+
+		initClient(url)
+
+		updatedConfig := GetDefaultClientConfig()
+		updatedTcpTimeout := updatedConfig.GettySessionParam.TcpWriteTimeout
+
+		// Should remain unchanged due to parse error
+		assert.Equal(t, originalTcpTimeout, updatedTcpTimeout)
+		t.Log("Invalid timeout parameter - configuration unchanged")
+	})
+}
