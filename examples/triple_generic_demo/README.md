@@ -16,6 +16,8 @@ Perfect for scenarios like API gateways, service mesh, dynamic service compositi
 - ✅ **Complete Triple Protocol Support**: Full implementation for Triple protocol generic calls
 - ✅ **Multiple Data Types**: Support for primitives, collections, maps, and complex objects
 - ✅ **Serialization Options**: Hessian2 and JSON serialization support
+- ✅ **Protocol Conversion**: Multi-protocol converter (Triple ↔ HTTP ↔ gRPC)
+- ✅ **Advanced Scenarios**: Async calls, batch operations, retry mechanisms
 - ✅ **Error Handling**: Comprehensive error handling and recovery
 - ✅ **Performance Optimized**: Efficient parameter processing and type handling
 - ✅ **Production Ready**: Includes metrics, logging, and monitoring
@@ -28,13 +30,19 @@ examples/triple_generic_demo/
 ├── provider/
 │   └── main.go                 # Service provider with multiple demo services
 ├── consumer/
-│   └── main.go                 # Generic call client examples
+│   ├── main.go                 # Basic generic call client examples
+│   └── advanced_examples.go    # Advanced scenarios (async, batch, retry)
 ├── benchmarks/
-│   └── generic_integration_test.go  # Performance tests and benchmarks
+│   ├── generic_integration_test.go  # Original integration test
+│   └── benchmark_test.go       # Performance benchmarks and stress tests
+├── protocol_converter/         # Protocol conversion functionality
+│   ├── converter.go            # Multi-protocol converter implementation
+│   ├── converter_test.go       # Unit tests for converter
+│   ├── test_converter.sh       # Shell script for testing scenarios
+│   └── README.md               # Protocol conversion documentation
 └── docs/
     ├── API.md                  # API documentation
-    ├── TROUBLESHOOTING.md      # Common issues and solutions
-    └── ADVANCED.md             # Advanced usage patterns
+    └── TROUBLESHOOTING.md      # Common issues and solutions
 ```
 
 ## 🏃‍♂️ Quick Start
