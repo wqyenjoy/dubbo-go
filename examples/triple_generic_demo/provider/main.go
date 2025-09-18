@@ -26,9 +26,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
-)
 
-import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/global"
 	"dubbo.apache.org/dubbo-go/v3/protocol"
@@ -135,18 +133,18 @@ func (mc *MetricsCollector) RecordError(method string) {
 func (mc *MetricsCollector) GetStats() map[string]interface{} {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
-	
+
 	stats := make(map[string]interface{})
 	stats["requests"] = make(map[string]int64)
 	stats["errors"] = make(map[string]int64)
-	
+
 	for k, v := range mc.requests {
 		stats["requests"].(map[string]int64)[k] = v
 	}
 	for k, v := range mc.errors {
 		stats["errors"].(map[string]int64)[k] = v
 	}
-	
+
 	return stats
 }
 
@@ -172,22 +170,22 @@ func main() {
 		server.SetServerApplication(&global.ApplicationConfig{
 			Name:                    "triple-generic-provider",
 			Version:                 "1.0.0",
-			MetadataServiceProtocol: "file", // 使用file协议以支持泛化调用
+			MetadataServiceProtocol: "file", // Use file protocol to support generic calls
 		}),
-		server.WithServerNotRegister(), // 不注册到注册中心，直连模式
+		server.WithServerNotRegister(), // Skip registry registration, direct connection mode
 	)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
 
 	// Register main demo service
-	if err := srv.RegisterService(&DemoService{}, 
+	if err := srv.RegisterService(&DemoService{},
 		server.WithSerialization(constant.Hessian2Serialization)); err != nil {
 		log.Fatalf("Failed to register DemoService: %v", err)
 	}
 	fmt.Println("✓ Registered DemoService with methods:")
 	fmt.Println("  - Hello(name string) string")
-	fmt.Println("  - Add(a, b int32) int32") 
+	fmt.Println("  - Add(a, b int32) int32")
 	fmt.Println("  - GetUserInfo(userID string) map[string]interface{}")
 	fmt.Println("  - ProcessList(items []string) []string")
 	fmt.Println("  - ComplexOperation(request map[string]interface{}) map[string]interface{}")
@@ -209,7 +207,7 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
-		
+
 		for range ticker.C {
 			stats := metricsCollector.GetStats()
 			fmt.Printf("\n=== Metrics (every 30s) ===\n")
@@ -247,12 +245,12 @@ func main() {
 	<-quit
 
 	fmt.Println("\n🛑 Shutting down server...")
-	
+
 	// Print final statistics
 	stats := metricsCollector.GetStats()
 	fmt.Printf("Final statistics:\n")
 	fmt.Printf("  Requests: %+v\n", stats["requests"])
 	fmt.Printf("  Errors: %+v\n", stats["errors"])
-	
+
 	fmt.Println("✅ Server shutdown complete")
 }

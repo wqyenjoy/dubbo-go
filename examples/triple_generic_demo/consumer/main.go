@@ -83,7 +83,7 @@ func (gc *GenericCaller) CallWithStringResult(methodName string, paramTypes []st
 	if err != nil {
 		return "", err
 	}
-	
+
 	if str, ok := result.(string); ok {
 		return str, nil
 	}
@@ -96,7 +96,7 @@ func (gc *GenericCaller) CallWithMapResult(methodName string, paramTypes []strin
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if m, ok := result.(map[string]interface{}); ok {
 		return m, nil
 	}
@@ -120,8 +120,8 @@ func main() {
 	// Example 1: Simple Hello call
 	fmt.Println("\n=== Example 1: Simple Hello Call ===")
 	result, err := caller.CallWithStringResult(
-		"Hello", 
-		[]string{"java.lang.String"}, 
+		"Hello",
+		[]string{"java.lang.String"},
 		[]interface{}{"World"},
 	)
 	if err != nil {

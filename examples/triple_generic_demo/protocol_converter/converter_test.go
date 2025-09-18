@@ -19,15 +19,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-)
 
-import (
-	"dubbo.apache.org/dubbo-go/v3/client"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/global"
 	"dubbo.apache.org/dubbo-go/v3/protocol"
@@ -75,7 +71,7 @@ func setupTestEnvironment(t *testing.T) (*server.Server, *ProtocolConverter) {
 	}
 
 	// Register mock service
-	if err := srv.RegisterService(&MockDemoService{}, 
+	if err := srv.RegisterService(&MockDemoService{},
 		server.WithSerialization(constant.Hessian2Serialization)); err != nil {
 		t.Fatalf("register service failed: %v", err)
 	}
@@ -216,7 +212,7 @@ func TestProtocolConverter_ProtocolConversion(t *testing.T) {
 				}
 			}
 
-			t.Logf("Protocol conversion %s->%s: %v, Duration: %s", 
+			t.Logf("Protocol conversion %s->%s: %v, Duration: %s",
 				tt.sourceProtocol, tt.targetProtocol, resp.Success, resp.Duration)
 		})
 	}
@@ -311,7 +307,7 @@ func TestProtocolGateway_HTTPEndpoints(t *testing.T) {
 		},
 		{
 			name:           "Invalid JSON request",
-			method:         "POST", 
+			method:         "POST",
 			endpoint:       "/convert",
 			body:           `{"invalid": json}`,
 			expectedStatus: http.StatusBadRequest,
@@ -319,7 +315,7 @@ func TestProtocolGateway_HTTPEndpoints(t *testing.T) {
 		{
 			name:           "Wrong method for convert",
 			method:         "GET",
-			endpoint:       "/convert", 
+			endpoint:       "/convert",
 			body:           "",
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
@@ -342,7 +338,7 @@ func TestProtocolGateway_HTTPEndpoints(t *testing.T) {
 			}
 
 			rr := httptest.NewRecorder()
-			
+
 			// Route request to appropriate handler
 			if tt.endpoint == "/health" {
 				gateway.handleHealth(rr, req)
@@ -364,7 +360,7 @@ func TestProtocolConverter_Performance(t *testing.T) {
 	defer srv.Stop()
 
 	const numRequests = 100
-	
+
 	req := &ConvertRequest{
 		SourceProtocol:      ProtocolTriple,
 		TargetProtocol:      ProtocolTriple,
@@ -411,7 +407,7 @@ func TestProtocolConverter_ConcurrentCalls(t *testing.T) {
 	defer srv.Stop()
 
 	const (
-		numGoroutines = 10
+		numGoroutines     = 10
 		callsPerGoroutine = 10
 	)
 
@@ -436,7 +432,7 @@ func TestProtocolConverter_ConcurrentCalls(t *testing.T) {
 				// Modify args to make each call unique
 				localReq := *req
 				localReq.Args = []interface{}{int32(goroutineID), int32(j)}
-				
+
 				resp := converter.Convert(&localReq)
 				results <- resp.Success
 			}
@@ -465,7 +461,7 @@ func TestProtocolConverter_ConcurrentCalls(t *testing.T) {
 
 	// Concurrency assertions
 	if float64(successCount)/float64(totalCalls) < 0.9 {
-		t.Errorf("Success rate under concurrent load too low: %.2f%%", 
+		t.Errorf("Success rate under concurrent load too low: %.2f%%",
 			float64(successCount)/float64(totalCalls)*100)
 	}
 }
@@ -476,7 +472,7 @@ func BenchmarkProtocolConverter_TripleToTriple(b *testing.B) {
 	b.StopTimer()
 	srv, converter := setupTestEnvironment(&testing.T{})
 	defer srv.Stop()
-	
+
 	req := &ConvertRequest{
 		SourceProtocol:      ProtocolTriple,
 		TargetProtocol:      ProtocolTriple,
@@ -503,7 +499,7 @@ func BenchmarkProtocolConverter_SerializationConversion(b *testing.B) {
 	b.StopTimer()
 	srv, converter := setupTestEnvironment(&testing.T{})
 	defer srv.Stop()
-	
+
 	req := &ConvertRequest{
 		SourceProtocol:      ProtocolTriple,
 		TargetProtocol:      ProtocolTriple,

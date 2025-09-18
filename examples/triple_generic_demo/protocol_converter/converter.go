@@ -38,10 +38,10 @@ type ProtocolConverter struct {
 	// Triple client connections with different serializations
 	tripleHessianConn client.Connection
 	tripleJSONConn    client.Connection
-	
+
 	// HTTP client for REST API conversion
 	httpClient *http.Client
-	
+
 	// Configuration
 	providerURL string
 	serviceName string
@@ -141,7 +141,7 @@ func (pc *ProtocolConverter) initializeConnections() error {
 // Convert performs protocol and serialization conversion
 func (pc *ProtocolConverter) Convert(req *ConvertRequest) *ConvertResponse {
 	start := time.Now()
-	
+
 	response := &ConvertResponse{
 		SourceProtocol:      req.SourceProtocol,
 		TargetProtocol:      req.TargetProtocol,
@@ -246,7 +246,7 @@ func (pc *ProtocolConverter) makeTripleCall(serialization SerializationType, met
 func (pc *ProtocolConverter) makeHTTPCall(methodName string, args []interface{}) (interface{}, error) {
 	// Convert RPC call to HTTP REST call
 	httpURL := pc.convertRPCToHTTPURL(methodName, args)
-	
+
 	req, err := http.NewRequest("GET", httpURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP request failed: %v", err)
@@ -273,10 +273,10 @@ func (pc *ProtocolConverter) makeHTTPCall(methodName string, args []interface{})
 // convertRPCToHTTPURL converts RPC call parameters to HTTP URL
 func (pc *ProtocolConverter) convertRPCToHTTPURL(methodName string, args []interface{}) string {
 	baseURL := "http://127.0.0.1:8080/api"
-	
+
 	// Convert method name to REST endpoint
 	endpoint := strings.ToLower(methodName)
-	
+
 	// Add parameters as query params
 	params := ""
 	if len(args) > 0 {
@@ -284,7 +284,7 @@ func (pc *ProtocolConverter) convertRPCToHTTPURL(methodName string, args []inter
 			params = fmt.Sprintf("?param=%s", str)
 		}
 	}
-	
+
 	return fmt.Sprintf("%s/%s%s", baseURL, endpoint, params)
 }
 
