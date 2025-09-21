@@ -14,7 +14,6 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/server"
 )
 
-// demo service for test (same as provider/main.go)
 type TestDemoService struct{}
 
 func (TestDemoService) Hello(ctx context.Context, name string) (string, error) {
@@ -30,7 +29,6 @@ func TestGenericInvoke_Triple_Hessian2(t *testing.T) {
 		intf = "com.example.DemoService"
 	)
 
-	// start provider server
 	srv, err := server.NewServer(
 		server.WithServerProtocol(
 			protocol.WithTriple(),
@@ -51,10 +49,8 @@ func TestGenericInvoke_Triple_Hessian2(t *testing.T) {
 		t.Fatalf("register error: %v", err)
 	}
 	go func() { _ = srv.Serve() }()
-	// wait server up
 	time.Sleep(time.Second)
 
-	// build consumer client (generic + hessian2)
 	cli, err := client.NewClient(
 		client.WithClientURL("tri://"+ip+":50061/"+intf),
 		client.WithClientProtocolTriple(),
@@ -80,21 +76,18 @@ func TestGenericInvoke_Triple_Hessian2(t *testing.T) {
 		return reply, nil
 	}
 
-	// basic
 	if got, err := call("Hello", []string{"java.lang.String"}, []any{"world"}); err != nil {
 		t.Fatalf("basic $invoke error: %v", err)
 	} else if got != "hello, world" {
 		t.Fatalf("want 'hello, world', got %v", got)
 	}
 
-	// empty types (go-go tolerant)
 	if got, err := call("Hello", nil, []any{"world"}); err != nil {
 		t.Fatalf("empty types $invoke error: %v", err)
 	} else if got != "hello, world" {
 		t.Fatalf("want 'hello, world' (empty types), got %v", got)
 	}
 
-	// loop 100 with stats
 	{
 		start := time.Now()
 		succ, fail := 0, 0
@@ -121,7 +114,6 @@ func TestGenericInvoke_Triple_Hessian2(t *testing.T) {
 		t.Logf("loop100: succ=%d fail=%d dur=%s", succ, fail, dur)
 	}
 
-	// concurrent 10 * 50 with stats
 	{
 		start := time.Now()
 		succCh := make(chan struct{}, 10*50)
@@ -167,7 +159,6 @@ func TestGenericInvoke_Triple_Hessian2(t *testing.T) {
 		t.Logf("concurrent 10x50: succ=%d fail=%d dur=%s", succ, fail, dur)
 	}
 
-	// NotExist should error
 	if _, err := call("NotExist", nil, nil); err == nil {
 		t.Fatalf("want error for NotExist, got nil")
 	}

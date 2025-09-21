@@ -31,7 +31,6 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/server"
 )
 
-// TestDemoService for benchmarking
 type TestDemoService struct{}
 
 func (TestDemoService) Hello(ctx context.Context, name string) (string, error) {
@@ -52,7 +51,6 @@ func (TestDemoService) GetUserInfo(ctx context.Context, userID string) (map[stri
 
 func (TestDemoService) Reference() string { return "com.example.DemoService" }
 
-// Setup function to start test server
 func setupTestServer(t *testing.T) (*server.Server, string) {
 	const (
 		ip   = "127.0.0.1"
@@ -81,12 +79,11 @@ func setupTestServer(t *testing.T) (*server.Server, string) {
 	}
 
 	go func() { _ = srv.Serve() }()
-	time.Sleep(time.Second) // wait server up
+	time.Sleep(time.Second)
 
 	return srv, fmt.Sprintf("tri://%s:%d/com.example.DemoService", ip, port)
 }
 
-// Setup generic client
 func setupGenericClient(t *testing.T, url string) client.Connection {
 	cli, err := client.NewClient(
 		client.WithClientURL(url),
@@ -107,7 +104,6 @@ func setupGenericClient(t *testing.T, url string) client.Connection {
 	return conn
 }
 
-// Generic call helper
 func genericCall(conn client.Connection, method string, types []string, args []interface{}) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -117,7 +113,6 @@ func genericCall(conn client.Connection, method string, types []string, args []i
 	return reply, err
 }
 
-// Benchmark simple string call
 func BenchmarkGenericCall_Hello(b *testing.B) {
 	srv, url := setupTestServer(&testing.T{})
 	defer srv.Stop()
@@ -135,7 +130,6 @@ func BenchmarkGenericCall_Hello(b *testing.B) {
 	})
 }
 
-// Benchmark math operation
 func BenchmarkGenericCall_Add(b *testing.B) {
 	srv, url := setupTestServer(&testing.T{})
 	defer srv.Stop()
@@ -153,7 +147,6 @@ func BenchmarkGenericCall_Add(b *testing.B) {
 	})
 }
 
-// Benchmark complex object call
 func BenchmarkGenericCall_GetUserInfo(b *testing.B) {
 	srv, url := setupTestServer(&testing.T{})
 	defer srv.Stop()
@@ -171,7 +164,6 @@ func BenchmarkGenericCall_GetUserInfo(b *testing.B) {
 	})
 }
 
-// Benchmark mixed workload
 func BenchmarkGenericCall_Mixed(b *testing.B) {
 	srv, url := setupTestServer(&testing.T{})
 	defer srv.Stop()
@@ -202,14 +194,12 @@ func BenchmarkGenericCall_Mixed(b *testing.B) {
 	})
 }
 
-// Stress test with high concurrency
 func TestGenericCall_StressTest(t *testing.T) {
 	srv, url := setupTestServer(t)
 	defer srv.Stop()
 
 	conn := setupGenericClient(t, url)
 
-	// Test parameters
 	const (
 		numGoroutines     = 100
 		callsPerGoroutine = 100
@@ -222,7 +212,6 @@ func TestGenericCall_StressTest(t *testing.T) {
 
 	start := time.Now()
 
-	// Start goroutines
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(goroutineID int) {
@@ -247,31 +236,21 @@ func TestGenericCall_StressTest(t *testing.T) {
 	close(successChan)
 	close(errorChan)
 
-	// Count results
 	successCount := len(successChan)
 	errorCount := len(errorChan)
 
-	// Report results
-	t.Logf("Stress Test Results:")
-	t.Logf("  Total calls: %d", totalCalls)
-	t.Logf("  Successful: %d", successCount)
-	t.Logf("  Failed: %d", errorCount)
-	t.Logf("  Duration: %v", duration)
-	t.Logf("  Throughput: %.2f calls/second", float64(totalCalls)/duration.Seconds())
-	t.Logf("  Average latency: %v", duration/time.Duration(totalCalls))
-	t.Logf("  Success rate: %.2f%%", float64(successCount)/float64(totalCalls)*100)
+	t.Logf("Total calls: %d, Success: %d, Failed: %d, Duration: %v", totalCalls, successCount, errorCount, duration)
+	t.Logf("Throughput: %.2f calls/sec, Success rate: %.2f%%", float64(totalCalls)/duration.Seconds(), float64(successCount)/float64(totalCalls)*100)
 
-	// Assertions
-	if errorCount > totalCalls/100 { // Allow up to 1% error rate
+	if errorCount > totalCalls/100 {
 		t.Errorf("Error rate too high: %d/%d (%.2f%%)", errorCount, totalCalls, float64(errorCount)/float64(totalCalls)*100)
 	}
 
-	if successCount < totalCalls*99/100 { // Require at least 99% success
+	if successCount < totalCalls*99/100 {
 		t.Errorf("Success rate too low: %d/%d (%.2f%%)", successCount, totalCalls, float64(successCount)/float64(totalCalls)*100)
 	}
 }
 
-// Test latency distribution
 func TestGenericCall_LatencyDistribution(t *testing.T) {
 	srv, url := setupTestServer(t)
 	defer srv.Stop()
@@ -281,12 +260,9 @@ func TestGenericCall_LatencyDistribution(t *testing.T) {
 	const numCalls = 1000
 	latencies := make([]time.Duration, 0, numCalls)
 
-	// Warm up
 	for i := 0; i < 10; i++ {
 		genericCall(conn, "Hello", []string{"java.lang.String"}, []interface{}{"warmup"})
 	}
-
-	// Collect latency data
 	for i := 0; i < numCalls; i++ {
 		start := time.Now()
 		_, err := genericCall(conn, "Hello", []string{"java.lang.String"}, []interface{}{fmt.Sprintf("latency_%d", i)})
@@ -299,7 +275,6 @@ func TestGenericCall_LatencyDistribution(t *testing.T) {
 		latencies = append(latencies, latency)
 	}
 
-	// Calculate statistics
 	var sum time.Duration
 	min := latencies[0]
 	max := latencies[0]
@@ -316,12 +291,8 @@ func TestGenericCall_LatencyDistribution(t *testing.T) {
 
 	avg := sum / time.Duration(numCalls)
 
-	// Calculate percentiles (simple approach)
-	// Note: This is a simplified percentile calculation
 	p95Index := int(float64(numCalls) * 0.95)
 	p99Index := int(float64(numCalls) * 0.99)
-
-	// Sort latencies for percentile calculation
 	for i := 0; i < len(latencies)-1; i++ {
 		for j := 0; j < len(latencies)-i-1; j++ {
 			if latencies[j] > latencies[j+1] {
@@ -333,15 +304,7 @@ func TestGenericCall_LatencyDistribution(t *testing.T) {
 	p95 := latencies[p95Index-1]
 	p99 := latencies[p99Index-1]
 
-	// Report statistics
-	t.Logf("Latency Distribution (%d calls):", numCalls)
-	t.Logf("  Average: %v", avg)
-	t.Logf("  Minimum: %v", min)
-	t.Logf("  Maximum: %v", max)
-	t.Logf("  95th percentile: %v", p95)
-	t.Logf("  99th percentile: %v", p99)
-
-	// Assertions
+	t.Logf("Latency (%d calls): avg=%v min=%v max=%v p95=%v p99=%v", numCalls, avg, min, max, p95, p99)
 	if avg > 10*time.Millisecond {
 		t.Errorf("Average latency too high: %v", avg)
 	}
@@ -355,19 +318,17 @@ func TestGenericCall_LatencyDistribution(t *testing.T) {
 	}
 }
 
-// Test memory usage under load
 func TestGenericCall_MemoryUsage(t *testing.T) {
 	srv, url := setupTestServer(t)
 	defer srv.Stop()
 
 	conn := setupGenericClient(t, url)
 
-	// Run multiple rounds to check for memory leaks
 	const rounds = 5
 	const callsPerRound = 1000
 
 	for round := 0; round < rounds; round++ {
-		t.Logf("Memory test round %d/%d", round+1, rounds)
+		t.Logf("Round %d/%d", round+1, rounds)
 
 		start := time.Now()
 		for i := 0; i < callsPerRound; i++ {
@@ -378,11 +339,9 @@ func TestGenericCall_MemoryUsage(t *testing.T) {
 		}
 		duration := time.Since(start)
 
-		t.Logf("  Completed %d calls in %v (%.2f calls/sec)", callsPerRound, duration, float64(callsPerRound)/duration.Seconds())
-
-		// Small pause between rounds
+		t.Logf("Completed %d calls in %v (%.2f calls/sec)", callsPerRound, duration, float64(callsPerRound)/duration.Seconds())
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	t.Logf("Memory test completed successfully - no apparent memory leaks")
+	t.Logf("Memory test completed")
 }

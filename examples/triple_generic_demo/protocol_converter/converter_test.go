@@ -30,7 +30,6 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/server"
 )
 
-// Mock service for testing
 type MockDemoService struct{}
 
 func (MockDemoService) Hello(ctx interface{}, name string) (string, error) {
@@ -45,14 +44,12 @@ func (MockDemoService) Reference() string {
 	return "com.example.DemoService"
 }
 
-// Test setup helper
 func setupTestEnvironment(t *testing.T) (*server.Server, *ProtocolConverter) {
 	const (
 		ip   = "127.0.0.1"
 		port = 50071 // Use different port for testing
 	)
 
-	// Create test server
 	srv, err := server.NewServer(
 		server.WithServerProtocol(
 			protocol.WithTriple(),
@@ -70,17 +67,15 @@ func setupTestEnvironment(t *testing.T) (*server.Server, *ProtocolConverter) {
 		t.Fatalf("create server failed: %v", err)
 	}
 
-	// Register mock service
 	if err := srv.RegisterService(&MockDemoService{},
 		server.WithSerialization(constant.Hessian2Serialization)); err != nil {
 		t.Fatalf("register service failed: %v", err)
 	}
 
-	// Start server in background
 	go func() { _ = srv.Serve() }()
-	time.Sleep(1 * time.Second) // Wait for server to start
+	time.Sleep(1 * time.Second)
 
-	// Create protocol converter
+
 	providerURL := "tri://127.0.0.1:50071/com.example.DemoService"
 	converter, err := NewProtocolConverter(providerURL, "com.example.DemoService")
 	if err != nil {
@@ -256,7 +251,6 @@ func TestProtocolConverter_ErrorHandling(t *testing.T) {
 
 			resp := converter.Convert(req)
 
-			// Should fail
 			if resp.Success {
 				t.Errorf("Expected failure for %s but got success", tt.name)
 			}
@@ -265,7 +259,7 @@ func TestProtocolConverter_ErrorHandling(t *testing.T) {
 				t.Errorf("Expected error message for %s but got empty string", tt.name)
 			}
 
-			t.Logf("Error handling test %s: %s", tt.name, resp.Error)
+			t.Logf("%s: %s", tt.name, resp.Error)
 		})
 	}
 }
@@ -274,7 +268,7 @@ func TestProtocolGateway_HTTPEndpoints(t *testing.T) {
 	srv, converter := setupTestEnvironment(t)
 	defer srv.Stop()
 
-	gateway := NewProtocolGateway(converter, 8081) // Use different port
+	gateway := NewProtocolGateway(converter, 8081)
 
 	tests := []struct {
 		name           string
@@ -339,7 +333,6 @@ func TestProtocolGateway_HTTPEndpoints(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			// Route request to appropriate handler
 			if tt.endpoint == "/health" {
 				gateway.handleHealth(rr, req)
 			} else if tt.endpoint == "/convert" {
@@ -350,7 +343,7 @@ func TestProtocolGateway_HTTPEndpoints(t *testing.T) {
 				t.Errorf("Expected status %d but got %d", tt.expectedStatus, rr.Code)
 			}
 
-			t.Logf("HTTP test %s: status=%d, body=%s", tt.name, rr.Code, rr.Body.String())
+			t.Logf("%s: status=%d", tt.name, rr.Code)
 		})
 	}
 }
@@ -384,15 +377,9 @@ func TestProtocolConverter_Performance(t *testing.T) {
 	totalDuration := time.Since(start)
 	averageLatency := totalDuration / time.Duration(numRequests)
 
-	t.Logf("Performance test results:")
-	t.Logf("  Total requests: %d", numRequests)
-	t.Logf("  Successful: %d", successCount)
-	t.Logf("  Success rate: %.2f%%", float64(successCount)/float64(numRequests)*100)
-	t.Logf("  Total duration: %v", totalDuration)
-	t.Logf("  Average latency: %v", averageLatency)
-	t.Logf("  Throughput: %.2f req/sec", float64(numRequests)/totalDuration.Seconds())
-
-	// Performance assertions
+	t.Logf("Requests: %d, Success: %d (%.2f%%), Duration: %v, Latency: %v, Throughput: %.2f req/sec",
+		numRequests, successCount, float64(successCount)/float64(numRequests)*100,
+		totalDuration, averageLatency, float64(numRequests)/totalDuration.Seconds())
 	if averageLatency > 10*time.Millisecond {
 		t.Errorf("Average latency too high: %v", averageLatency)
 	}
@@ -439,7 +426,6 @@ func TestProtocolConverter_ConcurrentCalls(t *testing.T) {
 		}(i)
 	}
 
-	// Collect results
 	successCount := 0
 	for i := 0; i < numGoroutines*callsPerGoroutine; i++ {
 		if <-results {
@@ -450,25 +436,15 @@ func TestProtocolConverter_ConcurrentCalls(t *testing.T) {
 	duration := time.Since(start)
 	totalCalls := numGoroutines * callsPerGoroutine
 
-	t.Logf("Concurrency test results:")
-	t.Logf("  Concurrent goroutines: %d", numGoroutines)
-	t.Logf("  Calls per goroutine: %d", callsPerGoroutine)
-	t.Logf("  Total calls: %d", totalCalls)
-	t.Logf("  Successful calls: %d", successCount)
-	t.Logf("  Success rate: %.2f%%", float64(successCount)/float64(totalCalls)*100)
-	t.Logf("  Total duration: %v", duration)
-	t.Logf("  Throughput: %.2f calls/sec", float64(totalCalls)/duration.Seconds())
-
-	// Concurrency assertions
+	t.Logf("Goroutines: %d, Calls: %d, Success: %d (%.2f%%), Duration: %v, Throughput: %.2f calls/sec",
+		numGoroutines, totalCalls, successCount, float64(successCount)/float64(totalCalls)*100,
+		duration, float64(totalCalls)/duration.Seconds())
 	if float64(successCount)/float64(totalCalls) < 0.9 {
-		t.Errorf("Success rate under concurrent load too low: %.2f%%",
-			float64(successCount)/float64(totalCalls)*100)
+		t.Errorf("Success rate too low: %.2f%%", float64(successCount)/float64(totalCalls)*100)
 	}
 }
 
-// Benchmark tests
 func BenchmarkProtocolConverter_TripleToTriple(b *testing.B) {
-	// Setup (not timed)
 	b.StopTimer()
 	srv, converter := setupTestEnvironment(&testing.T{})
 	defer srv.Stop()
@@ -484,7 +460,6 @@ func BenchmarkProtocolConverter_TripleToTriple(b *testing.B) {
 	}
 	b.StartTimer()
 
-	// Benchmark (timed)
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			resp := converter.Convert(req)
