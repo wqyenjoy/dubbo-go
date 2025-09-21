@@ -1,215 +1,119 @@
 # Triple Protocol Generic Call Demo
 
-This demo showcases the complete implementation of **Triple Protocol Generic Call** functionality in Dubbo-Go, allowing dynamic invocation of remote services without predefined stub code.
+This demo demonstrates Triple Protocol Generic Call functionality in Dubbo-Go, enabling dynamic service invocation without predefined interfaces.
 
-## 📋 Overview
+## Overview
 
-Generic call (泛化调用) enables calling remote services dynamically at runtime without:
+Generic calls allow runtime service invocation without:
 - Service interface definitions
 - Generated stub code
 - Compile-time dependencies
 
-Perfect for scenarios like API gateways, service mesh, dynamic service composition, and testing tools.
+Use cases include API gateways, service mesh, dynamic service composition, and testing tools.
 
-## 🚀 Features
+## Features
 
-- ✅ **Complete Triple Protocol Support**: Full implementation for Triple protocol generic calls
-- ✅ **Multiple Data Types**: Support for primitives, collections, maps, and complex objects
-- ✅ **Serialization Options**: Hessian2 and JSON serialization support
-- ✅ **Protocol Conversion**: Multi-protocol converter (Triple ↔ HTTP ↔ gRPC)
-- ✅ **Advanced Scenarios**: Async calls, batch operations, retry mechanisms
-- ✅ **Error Handling**: Comprehensive error handling and recovery
-- ✅ **Performance Optimized**: Efficient parameter processing and type handling
-- ✅ **Production Ready**: Includes metrics, logging, and monitoring
+- Complete Triple Protocol Support
+- Multiple data types (primitives, collections, maps, complex objects)
+- Multiple serialization formats (Hessian2, JSON)
+- Protocol conversion (Triple, HTTP, gRPC)
+- Async calls, batch operations, retry mechanisms
+- Comprehensive error handling
+- Performance optimization
+- Production-ready monitoring
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 examples/triple_generic_demo/
-├── README.md                    # This documentation
-├── provider/
-│   └── main.go                 # Service provider with multiple demo services
-├── consumer/
-│   ├── main.go                 # Basic generic call client examples
-│   └── advanced_examples.go    # Advanced scenarios (async, batch, retry)
-├── benchmarks/
-│   ├── generic_integration_test.go  # Original integration test
-│   └── benchmark_test.go       # Performance benchmarks and stress tests
-├── protocol_converter/         # Protocol conversion functionality
-│   ├── converter.go            # Multi-protocol converter implementation
-│   ├── converter_test.go       # Unit tests for converter
-│   ├── test_converter.sh       # Shell script for testing scenarios
-│   └── README.md               # Protocol conversion documentation
-└── docs/
-    ├── API.md                  # API documentation
-    └── TROUBLESHOOTING.md      # Common issues and solutions
+├── provider/main.go                    # Service provider
+├── consumer/main.go                    # Basic consumer examples
+├── consumer/advanced_examples.go       # Advanced usage patterns
+├── benchmarks/                         # Performance tests
+├── protocol_converter/                 # Protocol conversion tools
+└── docs/                              # Documentation
 ```
 
-## 🏃‍♂️ Quick Start
+## Quick Start
 
-### Step 1: Start the Provider
+### 1. Start Provider
 
 ```bash
-# Terminal 1: Start the provider
 cd examples/triple_generic_demo/provider
 go run main.go
 ```
 
-Expected output:
-```
-=== Triple Generic Call Provider Demo ===
-Starting server on 127.0.0.1:50051
-✓ Registered DemoService with methods:
-  - Hello(name string) string
-  - Add(a, b int32) int32
-  - GetUserInfo(userID string) map[string]interface{}
-  - ProcessList(items []string) []string
-  - ComplexOperation(request map[string]interface{}) map[string]interface{}
-✓ Registered HealthService
-
-🚀 Server starting...
-✅ Server is ready to accept generic calls!
-✅ Listening on 127.0.0.1:50051
-```
-
-### Step 2: Run the Consumer
+### 2. Run Consumer
 
 ```bash
-# Terminal 2: Run the consumer
 cd examples/triple_generic_demo/consumer
 go run main.go
 ```
 
-Expected output:
-```
-=== Triple Generic Call Consumer Demo ===
-Connecting to provider: tri://127.0.0.1:50051/com.example.DemoService
-✓ Generic caller created successfully
+## Basic Usage
 
-=== Example 1: Simple Hello Call ===
-✅ Hello result: Hello, World! (from Triple Generic Provider)
-
-=== Example 2: Math Add Operation ===
-✅ Add(15, 27) = 42 (type: int32)
-
-...
-```
-
-## 🔧 Core API Usage
-
-### Basic Generic Call
+### Creating a Generic Client
 
 ```go
-// Create generic caller
-caller, err := NewGenericCaller()
-if err != nil {
-    log.Fatal(err)
-}
+cli, err := client.NewClient(
+    client.WithClientURL("tri://127.0.0.1:50051/com.example.DemoService"),
+    client.WithClientProtocolTriple(),
+)
 
-// Make generic call: $invoke(methodName, paramTypes, args)
-result, err := caller.Call(
-    "Hello",                           // Method name
-    []string{"java.lang.String"},      // Parameter types
-    []interface{}{"World"},            // Arguments
+conn, err := cli.Dial("com.example.DemoService",
+    client.WithGeneric(),
+    client.WithSerialization(constant.Hessian2Serialization),
 )
 ```
 
-### Method Examples
+### Making Generic Calls
 
-#### 1. Simple String Method
+```go
+var reply interface{}
+err := conn.CallUnary(ctx, []interface{}{methodName, paramTypes, args}, &reply, "$invoke")
+```
+
+## Examples
+
+### Simple String Method
+
 ```go
 result, err := caller.Call("Hello", 
     []string{"java.lang.String"}, 
     []interface{}{"World"})
-// Result: "Hello, World! (from Triple Generic Provider)"
 ```
 
-#### 2. Math Operations
+### Math Operations
+
 ```go
 result, err := caller.Call("Add",
     []string{"int", "int"},
     []interface{}{int32(15), int32(27)})
-// Result: int32(42)
 ```
 
-#### 3. Complex Object Return
+### Complex Object Return
+
 ```go
 result, err := caller.Call("GetUserInfo",
     []string{"java.lang.String"},
     []interface{}{"user123"})
-// Result: map[string]interface{}{
-//     "id": "user123",
-//     "name": "User_user123",
-//     "email": "user123@example.com",
-//     ...
-// }
 ```
 
-#### 4. List Processing
-```go
-result, err := caller.Call("ProcessList",
-    []string{"java.util.List"},
-    []interface{}{[]interface{}{"item1", "item2", "item3"}})
-// Result: []interface{}{"processed_item1", "processed_item2", "processed_item3"}
-```
+## Type Mapping
 
-#### 5. Complex Map Operations
-```go
-complexRequest := map[string]interface{}{
-    "action": "process",
-    "data": map[string]interface{}{
-        "items": []interface{}{"a", "b", "c"},
-        "config": map[string]interface{}{
-            "timeout": 30,
-            "retries": 3,
-        },
-    },
-}
+| Go Type | Java Type | Parameter String |
+|---------|-----------|------------------|
+| string | java.lang.String | "java.lang.String" |
+| int32 | int | "int" |
+| int64 | long | "long" |
+| bool | boolean | "boolean" |
+| []interface{} | java.util.List | "java.util.List" |
+| map[string]interface{} | java.util.Map | "java.util.Map" |
 
-result, err := caller.Call("ComplexOperation",
-    []string{"java.util.Map"},
-    []interface{}{complexRequest})
-```
+## Configuration
 
-## 📊 Performance & Testing
+### Server
 
-### Run Benchmarks
-
-```bash
-cd examples/triple_generic_demo/benchmarks
-go test -v -run TestGenericInvoke_Triple_Hessian2
-```
-
-### Performance Characteristics
-
-The benchmark tests demonstrate:
-- **Basic calls**: < 1ms latency
-- **Loop 100x**: ~5ms total (0.05ms per call)
-- **Concurrent 10x50**: ~500ms total with 500 successful calls
-- **Error handling**: Proper timeout and error recovery
-- **Type safety**: Strong type checking and conversion
-
-### Sample Benchmark Results
-```
-loop100: succ=100 fail=0 dur=5.123ms
-concurrent 10x50: succ=500 fail=0 dur=486.789ms
-```
-
-## 🔍 Supported Types
-
-| Go Type | Java Type | Example |
-|---------|-----------|---------|
-| `string` | `java.lang.String` | `"hello"` |
-| `int32` | `int` | `123` |
-| `int64` | `long` | `123456789L` |
-| `bool` | `boolean` | `true` |
-| `[]interface{}` | `java.util.List` | `["a", "b", "c"]` |
-| `map[string]interface{}` | `java.util.Map` | `{"key": "value"}` |
-| Custom structs | Java POJOs | Complex objects |
-
-## ⚙️ Configuration Options
-
-### Server Configuration
 ```go
 srv, err := server.NewServer(
     server.WithServerProtocol(
@@ -219,108 +123,38 @@ srv, err := server.NewServer(
     ),
     server.WithServerSerialization(constant.Hessian2Serialization),
     server.SetServerApplication(&global.ApplicationConfig{
-        Name:                    "triple-generic-provider",
         MetadataServiceProtocol: "file", // Required for generic calls
     }),
 )
 ```
 
-### Client Configuration
-```go
-cli, err := client.NewClient(
-    client.WithClientURL("tri://127.0.0.1:50051/com.example.DemoService"),
-    client.WithClientProtocolTriple(),
-)
+### Client
 
+```go
 conn, err := cli.Dial("com.example.DemoService",
-    client.WithGeneric(),  // Enable generic calls
+    client.WithGeneric(),
     client.WithSerialization(constant.Hessian2Serialization),
 )
 ```
 
-## 🛠️ Troubleshooting
+## Testing
 
-### Common Issues
+```bash
+# Run benchmarks
+cd benchmarks
+go test -bench=. -v
 
-1. **Connection Failed**
-   ```
-   Error: dial failed: connection refused
-   ```
-   - **Solution**: Ensure provider is running and port is accessible
-
-2. **Method Not Found**
-   ```
-   Error: method 'MethodName' not found
-   ```
-   - **Solution**: Check method name spelling and case sensitivity
-
-3. **Type Mismatch**
-   ```
-   Error: cannot convert argument type
-   ```
-   - **Solution**: Ensure parameter types match the service method signature
-
-4. **Serialization Error**
-   ```
-   Error: hessian2 serialization failed
-   ```
-   - **Solution**: Use supported types or implement proper serialization
-
-### Debug Mode
-
-Enable debug logging:
-```go
-import "github.com/dubbogo/gost/log"
-
-// Set log level to debug
-log.SetLoggerLevel(log.DEBUG)
+# Test protocol converter
+cd protocol_converter
+./test_converter.sh
 ```
 
-## 📚 Advanced Usage
+## Documentation
 
-### 1. Async Generic Calls
-```go
-// TODO: Implement async generic call patterns
-// Example: Using goroutines for concurrent calls
-```
+- [API Documentation](docs/API.md)
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+- [Protocol Converter](protocol_converter/README.md)
 
-### 2. Batch Operations
-```go
-// TODO: Implement batch generic call functionality
-// Example: Multiple method calls in single request
-```
+## License
 
-### 3. Custom Serialization
-```go
-// TODO: Demonstrate custom serialization handlers
-// Example: Protocol Buffers, Avro support
-```
-
-### 4. Connection Pooling
-```go
-// TODO: Implement connection pooling for high throughput
-// Example: Pool management and connection reuse
-```
-
-## 🔗 Related Documentation
-
-- [Dubbo-Go Official Docs](https://dubbo.apache.org/zh/docs3-v2/golang-sdk/)
-- [Triple Protocol Specification](https://dubbo.apache.org/zh/docs3-v2/golang-sdk/tutorial/develop/protocol/triple/)
-- [Generic Invocation Best Practices](https://dubbo.apache.org/zh/docs3-v2/golang-sdk/generic-invoke/)
-
-## 🤝 Contributing
-
-If you find issues or want to improve this demo:
-
-1. Report bugs with detailed reproduction steps
-2. Submit feature requests with use case descriptions
-3. Contribute code improvements with tests
-4. Update documentation for clarity
-
-## 📄 License
-
-This demo is licensed under the Apache License 2.0 - see the [LICENSE](../../../LICENSE) file for details.
-
----
-
-**Happy coding with Dubbo-Go Triple Generic Calls! 🚀**
+Apache License 2.0
