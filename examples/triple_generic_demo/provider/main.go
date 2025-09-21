@@ -36,12 +36,12 @@ import (
 // DemoService represents the service interface
 type DemoService struct{}
 
-// Hello simple greeting method
+// Hello is a simple greeting method
 func (DemoService) Hello(ctx context.Context, name string) (string, error) {
 	return fmt.Sprintf("Hello, %s! (from Triple Generic Provider)", name), nil
 }
 
-// Add simple math method
+// Add is a simple math method
 func (DemoService) Add(ctx context.Context, a, b int32) (int32, error) {
 	result := a + b
 	fmt.Printf("Add(%d, %d) = %d\n", a, b, result)

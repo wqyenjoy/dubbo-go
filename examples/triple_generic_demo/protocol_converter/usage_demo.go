@@ -384,7 +384,7 @@ func demonstrateBusinessScenarios() {
 			fmt.Printf("  📊 Conversion path: %s(%s) → %s(%s)\n",
 				resp.SourceProtocol, resp.SourceSerialization,
 				resp.TargetProtocol, resp.TargetSerialization)
-			
+
 			// Only show result summary to avoid too long output
 			if resultMap, ok := resp.Result.(map[string]interface{}); ok {
 				fmt.Printf("  📄 Result summary: %d fields\n", len(resultMap))
@@ -465,7 +465,7 @@ func demonstratePerformanceTest() {
 
 	fmt.Printf("\n📈 Performance Test Results:\n")
 	fmt.Printf("  Total requests: %d\n", numRequests)
-	fmt.Printf("  Successful requests: %d (Success rate: %.1f%%)\n", successCount, 
+	fmt.Printf("  Successful requests: %d (Success rate: %.1f%%)\n", successCount,
 		float64(successCount)/float64(numRequests)*100)
 	fmt.Printf("  Total time: %v\n", overallTime)
 	fmt.Printf("  Average latency: %v\n", avgTime)

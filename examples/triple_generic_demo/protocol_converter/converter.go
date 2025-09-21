@@ -25,9 +25,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-)
 
-import (
 	"dubbo.apache.org/dubbo-go/v3/client"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	hessian "github.com/apache/dubbo-go-hessian2"
