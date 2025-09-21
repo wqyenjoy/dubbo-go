@@ -25,10 +25,15 @@ import (
 	"net/http"
 	"strings"
 	"time"
+)
 
+import (
+	hessian "github.com/apache/dubbo-go-hessian2"
+)
+
+import (
 	"dubbo.apache.org/dubbo-go/v3/client"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
-	hessian "github.com/apache/dubbo-go-hessian2"
 )
 
 // ProtocolConverter handles conversion between different protocols

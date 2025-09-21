@@ -6,7 +6,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+)
 
+import (
 	"dubbo.apache.org/dubbo-go/v3/client"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/global"
