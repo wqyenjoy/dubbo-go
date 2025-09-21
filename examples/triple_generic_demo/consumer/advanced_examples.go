@@ -28,13 +28,11 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 )
 
-// AsyncGenericCaller provides async generic call functionality
-type AsyncGenericCaller struct {
+	type AsyncGenericCaller struct {
 	conn client.Connection
 }
 
-// AsyncCallResult represents the result of an async call
-type AsyncCallResult struct {
+	type AsyncCallResult struct {
 	MethodName string
 	Result     interface{}
 	Error      error
@@ -43,24 +41,21 @@ type AsyncCallResult struct {
 	EndTime    time.Time
 }
 
-// BatchCallRequest represents a batch call request
-type BatchCallRequest struct {
+	type BatchCallRequest struct {
 	ID         string
 	MethodName string
 	ParamTypes []string
 	Args       []interface{}
 }
 
-// BatchCallResponse represents a batch call response
-type BatchCallResponse struct {
+	type BatchCallResponse struct {
 	ID       string
 	Result   interface{}
 	Error    error
 	Duration time.Duration
 }
 
-// NewAsyncGenericCaller creates a new async generic caller
-func NewAsyncGenericCaller() (*AsyncGenericCaller, error) {
+	func NewAsyncGenericCaller() (*AsyncGenericCaller, error) {
 	cli, err := client.NewClient(
 		client.WithClientURL("tri://127.0.0.1:50051/com.example.DemoService"),
 		client.WithClientProtocolTriple(),
@@ -80,8 +75,7 @@ func NewAsyncGenericCaller() (*AsyncGenericCaller, error) {
 	return &AsyncGenericCaller{conn: conn}, nil
 }
 
-// CallAsync makes an asynchronous generic call
-func (agc *AsyncGenericCaller) CallAsync(methodName string, paramTypes []string, args []interface{}) <-chan AsyncCallResult {
+	func (agc *AsyncGenericCaller) CallAsync(methodName string, paramTypes []string, args []interface{}) <-chan AsyncCallResult {
 	resultChan := make(chan AsyncCallResult, 1)
 
 	go func() {
@@ -110,12 +104,9 @@ func (agc *AsyncGenericCaller) CallAsync(methodName string, paramTypes []string,
 	return resultChan
 }
 
-// CallBatch executes multiple generic calls concurrently
-func (agc *AsyncGenericCaller) CallBatch(requests []BatchCallRequest) []BatchCallResponse {
-	responsesChan := make(chan BatchCallResponse, len(requests))
-	var wg sync.WaitGroup
-
-	// Execute all calls concurrently
+	func (agc *AsyncGenericCaller) CallBatch(requests []BatchCallRequest) []BatchCallResponse {
+		responsesChan := make(chan BatchCallResponse, len(requests))
+		var wg sync.WaitGroup
 	for _, req := range requests {
 		wg.Add(1)
 		go func(request BatchCallRequest) {
@@ -139,13 +130,10 @@ func (agc *AsyncGenericCaller) CallBatch(requests []BatchCallRequest) []BatchCal
 		}(req)
 	}
 
-	// Wait for all calls to complete
-	go func() {
-		wg.Wait()
-		close(responsesChan)
-	}()
-
-	// Collect results
+		go func() {
+			wg.Wait()
+			close(responsesChan)
+		}()
 	var responses []BatchCallResponse
 	for response := range responsesChan {
 		responses = append(responses, response)
@@ -154,8 +142,7 @@ func (agc *AsyncGenericCaller) CallBatch(requests []BatchCallRequest) []BatchCal
 	return responses
 }
 
-// CallWithTimeout makes a call with custom timeout
-func (agc *AsyncGenericCaller) CallWithTimeout(methodName string, paramTypes []string, args []interface{}, timeout time.Duration) (interface{}, error) {
+	func (agc *AsyncGenericCaller) CallWithTimeout(methodName string, paramTypes []string, args []interface{}, timeout time.Duration) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -164,13 +151,12 @@ func (agc *AsyncGenericCaller) CallWithTimeout(methodName string, paramTypes []s
 	return reply, err
 }
 
-// CallWithRetry makes a call with retry mechanism
-func (agc *AsyncGenericCaller) CallWithRetry(methodName string, paramTypes []string, args []interface{}, maxRetries int, retryDelay time.Duration) (interface{}, error) {
+	func (agc *AsyncGenericCaller) CallWithRetry(methodName string, paramTypes []string, args []interface{}, maxRetries int, retryDelay time.Duration) (interface{}, error) {
 	var lastErr error
 
 	for i := 0; i <= maxRetries; i++ {
 		if i > 0 {
-			fmt.Printf("Retrying call %s (attempt %d/%d)\n", methodName, i+1, maxRetries+1)
+			log.Printf("Retrying call %s (attempt %d/%d)", methodName, i+1, maxRetries+1)
 			time.Sleep(retryDelay)
 		}
 
@@ -189,34 +175,30 @@ func (agc *AsyncGenericCaller) CallWithRetry(methodName string, paramTypes []str
 	return nil, fmt.Errorf("call failed after %d retries: %v", maxRetries+1, lastErr)
 }
 
-// AdvancedExamples demonstrates advanced generic call patterns
-func AdvancedExamples() {
-	fmt.Println("\n=== Advanced Generic Call Examples ===")
+	func AdvancedExamples() {
+		log.Println("Advanced Generic Call Examples")
 
 	caller, err := NewAsyncGenericCaller()
 	if err != nil {
 		log.Fatalf("Failed to create async caller: %v", err)
 	}
 
-	// Example 1: Async Calls
-	fmt.Println("\n--- Example 1: Async Calls ---")
-	fmt.Println("Starting 3 async calls...")
+		log.Println("Example 1: Async Calls")
+		log.Println("Starting 3 async calls")
 
 	asyncCall1 := caller.CallAsync("Hello", []string{"java.lang.String"}, []interface{}{"Async1"})
 	asyncCall2 := caller.CallAsync("Add", []string{"int", "int"}, []interface{}{int32(10), int32(20)})
 	asyncCall3 := caller.CallAsync("GetUserInfo", []string{"java.lang.String"}, []interface{}{"async_user"})
 
-	// Wait for results
-	result1 := <-asyncCall1
-	result2 := <-asyncCall2
-	result3 := <-asyncCall3
+		result1 := <-asyncCall1
+		result2 := <-asyncCall2
+		result3 := <-asyncCall3
 
-	fmt.Printf("Async Call 1: %s (took %v)\n", result1.Result, result1.Duration)
-	fmt.Printf("Async Call 2: %v (took %v)\n", result2.Result, result2.Duration)
-	fmt.Printf("Async Call 3: %v (took %v)\n", result3.Result, result3.Duration)
+		log.Printf("Call 1: %s (%v)", result1.Result, result1.Duration)
+		log.Printf("Call 2: %v (%v)", result2.Result, result2.Duration)
+		log.Printf("Call 3: %v (%v)", result3.Result, result3.Duration)
 
-	// Example 2: Batch Calls
-	fmt.Println("\n--- Example 2: Batch Calls ---")
+		log.Println("Example 2: Batch Calls")
 
 	batchRequests := []BatchCallRequest{
 		{ID: "batch1", MethodName: "Hello", ParamTypes: []string{"java.lang.String"}, Args: []interface{}{"Batch1"}},
@@ -230,50 +212,42 @@ func AdvancedExamples() {
 	batchResults := caller.CallBatch(batchRequests)
 	batchDuration := time.Since(start)
 
-	fmt.Printf("Batch execution completed in %v\n", batchDuration)
-	fmt.Printf("Processed %d calls concurrently:\n", len(batchResults))
+		log.Printf("Batch execution completed in %v", batchDuration)
+		log.Printf("Processed %d calls concurrently:", len(batchResults))
 
-	for _, result := range batchResults {
-		if result.Error != nil {
-			fmt.Printf("  %s: ERROR - %v (took %v)\n", result.ID, result.Error, result.Duration)
-		} else {
-			fmt.Printf("  %s: %v (took %v)\n", result.ID, result.Result, result.Duration)
+		for _, result := range batchResults {
+			if result.Error != nil {
+				log.Printf("  %s: ERROR - %v (%v)", result.ID, result.Error, result.Duration)
+			} else {
+				log.Printf("  %s: %v (%v)", result.ID, result.Result, result.Duration)
+			}
 		}
-	}
 
-	// Example 3: Timeout Control
-	fmt.Println("\n--- Example 3: Timeout Control ---")
-
-	// Short timeout
+		log.Println("Example 3: Timeout Control")
 	shortResult, err := caller.CallWithTimeout(
 		"Hello",
 		[]string{"java.lang.String"},
 		[]interface{}{"ShortTimeout"},
 		100*time.Millisecond, // Very short timeout
 	)
-	if err != nil {
-		fmt.Printf("Short timeout call failed as expected: %v\n", err)
-	} else {
-		fmt.Printf("Short timeout call succeeded: %v\n", shortResult)
-	}
-
-	// Normal timeout
+		if err != nil {
+			log.Printf("Short timeout call failed as expected: %v", err)
+		} else {
+			log.Printf("Short timeout call succeeded: %v", shortResult)
+		}
 	normalResult, err := caller.CallWithTimeout(
 		"Hello",
 		[]string{"java.lang.String"},
 		[]interface{}{"NormalTimeout"},
 		3*time.Second,
 	)
-	if err != nil {
-		fmt.Printf("Normal timeout call failed: %v\n", err)
-	} else {
-		fmt.Printf("Normal timeout call succeeded: %v\n", normalResult)
-	}
+		if err != nil {
+			log.Printf("Normal timeout call failed: %v", err)
+		} else {
+			log.Printf("Normal timeout call succeeded: %v", normalResult)
+		}
 
-	// Example 4: Retry Mechanism
-	fmt.Println("\n--- Example 4: Retry Mechanism ---")
-
-	// Retry with valid method
+		log.Println("Example 4: Retry Mechanism")
 	retryResult, err := caller.CallWithRetry(
 		"Hello",
 		[]string{"java.lang.String"},
@@ -281,14 +255,13 @@ func AdvancedExamples() {
 		2,                    // max 2 retries
 		500*time.Millisecond, // 500ms delay between retries
 	)
-	if err != nil {
-		fmt.Printf("Retry call failed: %v\n", err)
-	} else {
-		fmt.Printf("Retry call succeeded: %v\n", retryResult)
-	}
+		if err != nil {
+			log.Printf("Retry call failed: %v", err)
+		} else {
+			log.Printf("Retry call succeeded: %v", retryResult)
+		}
 
-	// Retry with invalid method (will fail and retry)
-	fmt.Println("\nTesting retry with invalid method:")
+		log.Println("Testing retry with invalid method:")
 	_, err = caller.CallWithRetry(
 		"InvalidMethod",
 		nil,
@@ -296,12 +269,11 @@ func AdvancedExamples() {
 		2, // max 2 retries
 		200*time.Millisecond,
 	)
-	if err != nil {
-		fmt.Printf("Invalid method retry failed as expected: %v\n", err)
-	}
+		if err != nil {
+			log.Printf("Invalid method retry failed as expected: %v", err)
+		}
 
-	// Example 5: Concurrent Performance Test
-	fmt.Println("\n--- Example 5: Concurrent Performance Test ---")
+		log.Println("Example 5: Concurrent Performance Test")
 
 	concurrentCount := 50
 	start = time.Now()
@@ -326,8 +298,8 @@ func AdvancedExamples() {
 				errorChan <- err
 			} else {
 				successChan <- true
-				if index%10 == 0 { // Log every 10th call
-					fmt.Printf("  Call %d completed: %v\n", index, result)
+				if index%10 == 0 {
+					log.Printf("  Call %d completed: %v", index, result)
 				}
 			}
 		}(i)
@@ -341,22 +313,15 @@ func AdvancedExamples() {
 	errorCount := len(errorChan)
 	totalDuration := time.Since(start)
 
-	fmt.Printf("\nConcurrent Performance Results:\n")
-	fmt.Printf("  Total calls: %d\n", concurrentCount)
-	fmt.Printf("  Successful: %d\n", successCount)
-	fmt.Printf("  Failed: %d\n", errorCount)
-	fmt.Printf("  Total duration: %v\n", totalDuration)
-	fmt.Printf("  Average per call: %v\n", totalDuration/time.Duration(concurrentCount))
-	fmt.Printf("  Throughput: %.2f calls/second\n", float64(concurrentCount)/totalDuration.Seconds())
+		log.Printf("Performance Results: %d calls, %d success, %d failed, duration: %v, throughput: %.2f calls/sec",
+			concurrentCount, successCount, errorCount, totalDuration, float64(concurrentCount)/totalDuration.Seconds())
 
-	fmt.Println("\n=== Advanced Examples Completed ===")
+		log.Println("Advanced Examples Completed")
 }
 
-// Run this as a separate program
-func main() {
-	// Wait for provider to be ready
-	fmt.Println("Waiting for provider to be ready...")
-	time.Sleep(1 * time.Second)
+	func main() {
+		log.Println("Waiting for provider to be ready")
+		time.Sleep(1 * time.Second)
 
 	AdvancedExamples()
 }

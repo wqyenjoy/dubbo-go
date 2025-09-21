@@ -36,20 +36,17 @@ import (
 // DemoService represents the service interface
 type DemoService struct{}
 
-// Hello is a simple greeting method
-func (DemoService) Hello(ctx context.Context, name string) (string, error) {
-	return fmt.Sprintf("Hello, %s! (from Triple Generic Provider)", name), nil
-}
+	func (DemoService) Hello(ctx context.Context, name string) (string, error) {
+		return fmt.Sprintf("Hello, %s", name), nil
+	}
 
-// Add is a simple math method
-func (DemoService) Add(ctx context.Context, a, b int32) (int32, error) {
+	func (DemoService) Add(ctx context.Context, a, b int32) (int32, error) {
 	result := a + b
 	fmt.Printf("Add(%d, %d) = %d\n", a, b, result)
 	return result, nil
 }
 
-// GetUserInfo returns user information
-func (DemoService) GetUserInfo(ctx context.Context, userID string) (map[string]interface{}, error) {
+	func (DemoService) GetUserInfo(ctx context.Context, userID string) (map[string]interface{}, error) {
 	userInfo := map[string]interface{}{
 		"id":       userID,
 		"name":     fmt.Sprintf("User_%s", userID),
@@ -62,8 +59,7 @@ func (DemoService) GetUserInfo(ctx context.Context, userID string) (map[string]i
 	return userInfo, nil
 }
 
-// ProcessList processes a list of items
-func (DemoService) ProcessList(ctx context.Context, items []string) ([]string, error) {
+	func (DemoService) ProcessList(ctx context.Context, items []string) ([]string, error) {
 	processed := make([]string, len(items))
 	for i, item := range items {
 		processed[i] = fmt.Sprintf("processed_%s", item)
@@ -72,8 +68,7 @@ func (DemoService) ProcessList(ctx context.Context, items []string) ([]string, e
 	return processed, nil
 }
 
-// ComplexOperation demonstrates complex parameter handling
-func (DemoService) ComplexOperation(ctx context.Context, request map[string]interface{}) (map[string]interface{}, error) {
+	func (DemoService) ComplexOperation(ctx context.Context, request map[string]interface{}) (map[string]interface{}, error) {
 	response := map[string]interface{}{
 		"status":    "success",
 		"timestamp": time.Now().Unix(),
@@ -88,13 +83,11 @@ func (DemoService) ComplexOperation(ctx context.Context, request map[string]inte
 	return response, nil
 }
 
-// Reference returns the service reference
-func (DemoService) Reference() string {
+	func (DemoService) Reference() string {
 	return "com.example.DemoService"
 }
 
-// HealthService for health checks
-type HealthService struct{}
+	type HealthService struct{}
 
 func (HealthService) Check(ctx context.Context) (string, error) {
 	return "OK", nil
@@ -104,8 +97,7 @@ func (HealthService) Reference() string {
 	return "com.example.HealthService"
 }
 
-// MetricsCollector for collecting metrics
-type MetricsCollector struct {
+	type MetricsCollector struct {
 	mu       sync.RWMutex
 	requests map[string]int64
 	errors   map[string]int64
@@ -156,10 +148,8 @@ func main() {
 		port = 50051
 	)
 
-	fmt.Println("=== Triple Generic Call Provider Demo ===")
-	fmt.Printf("Starting server on %s:%d\n", ip, port)
+	log.Printf("Starting server on %s:%d", ip, port)
 
-	// Create server with Triple protocol
 	srv, err := server.NewServer(
 		server.WithServerProtocol(
 			protocol.WithTriple(),
@@ -170,87 +160,56 @@ func main() {
 		server.SetServerApplication(&global.ApplicationConfig{
 			Name:                    "triple-generic-provider",
 			Version:                 "1.0.0",
-			MetadataServiceProtocol: "file", // Use file protocol to support generic calls
+			MetadataServiceProtocol: "file",
 		}),
-		server.WithServerNotRegister(), // Skip registry registration, direct connection mode
+		server.WithServerNotRegister()
 	)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
 
-	// Register main demo service
 	if err := srv.RegisterService(&DemoService{},
 		server.WithSerialization(constant.Hessian2Serialization)); err != nil {
 		log.Fatalf("Failed to register DemoService: %v", err)
 	}
-	fmt.Println("✓ Registered DemoService with methods:")
-	fmt.Println("  - Hello(name string) string")
-	fmt.Println("  - Add(a, b int32) int32")
-	fmt.Println("  - GetUserInfo(userID string) map[string]interface{}")
-	fmt.Println("  - ProcessList(items []string) []string")
-	fmt.Println("  - ComplexOperation(request map[string]interface{}) map[string]interface{}")
+	log.Println("Registered DemoService")
 
-	// Register health service
 	if err := srv.RegisterService(&HealthService{}); err != nil {
 		log.Fatalf("Failed to register HealthService: %v", err)
 	}
-	fmt.Println("✓ Registered HealthService")
+	log.Println("Registered HealthService")
 
-	// Print generic call information
-	fmt.Println("\n=== Generic Call Information ===")
-	fmt.Println("Generic Method: $invoke")
-	fmt.Println("Parameters: [methodName, paramTypes, args]")
-	fmt.Println("Example: $invoke(\"Hello\", [\"java.lang.String\"], [\"world\"])")
-	fmt.Println("Supported serializations: hessian2, json")
+	log.Println("Generic method: $invoke")
+	log.Println("Parameters: [methodName, paramTypes, args]")
 
-	// Start metrics reporting goroutine
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 
 		for range ticker.C {
 			stats := metricsCollector.GetStats()
-			fmt.Printf("\n=== Metrics (every 30s) ===\n")
-			fmt.Printf("Requests: %+v\n", stats["requests"])
-			fmt.Printf("Errors: %+v\n", stats["errors"])
+			log.Printf("Metrics - Requests: %+v, Errors: %+v", stats["requests"], stats["errors"])
 		}
 	}()
 
-	// Start server in goroutine
 	go func() {
-		fmt.Println("\n🚀 Server starting...")
 		if err := srv.Serve(); err != nil {
 			log.Fatalf("Server failed: %v", err)
 		}
 	}()
 
-	// Wait for server to be ready
 	time.Sleep(1 * time.Second)
-	fmt.Println("✅ Server is ready to accept generic calls!")
-	fmt.Printf("✅ Listening on %s:%d\n", ip, port)
+	log.Printf("Server listening on %s:%d", ip, port)
 
-	// Print usage examples
-	fmt.Println("\n=== Usage Examples ===")
-	fmt.Println("You can now make generic calls using any Dubbo client:")
-	fmt.Printf("1. Direct connection: tri://%s:%d/com.example.DemoService\n", ip, port)
-	fmt.Println("2. Call method: $invoke")
-	fmt.Println("3. Example calls:")
-	fmt.Println(`   Hello: $invoke("Hello", ["java.lang.String"], ["world"])`)
-	fmt.Println(`   Add: $invoke("Add", ["int", "int"], [10, 20])`)
-	fmt.Println(`   GetUserInfo: $invoke("GetUserInfo", ["java.lang.String"], ["user123"])`)
+	log.Printf("Generic call URL: tri://%s:%d/com.example.DemoService", ip, port)
 
-	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	fmt.Println("\n🛑 Shutting down server...")
+	log.Println("Shutting down server")
 
-	// Print final statistics
 	stats := metricsCollector.GetStats()
-	fmt.Printf("Final statistics:\n")
-	fmt.Printf("  Requests: %+v\n", stats["requests"])
-	fmt.Printf("  Errors: %+v\n", stats["errors"])
-
-	fmt.Println("✅ Server shutdown complete")
+	log.Printf("Final stats - Requests: %+v, Errors: %+v", stats["requests"], stats["errors"])
+	log.Println("Server shutdown complete")
 }

@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -29,19 +30,19 @@ import (
 // This example demonstrates how to use the protocol converter for different conversion scenarios
 
 func main() {
-	fmt.Println("🌉 Triple Protocol Converter Usage Demo")
-	fmt.Println("========================================")
+	log.Println(" Triple Protocol Converter Usage Demo")
+	log.Println("")
 
 	// Wait to ensure the converter service has started
-	fmt.Println("⏳ Checking Protocol Converter service status...")
+	log.Println(" Checking Protocol Converter service status...")
 	if !checkConverterService() {
-		fmt.Println("❌ Protocol Converter service is not running")
-		fmt.Println("Please start the converter first:")
-		fmt.Println("  cd examples/triple_generic_demo/protocol_converter")
-		fmt.Println("  go run converter.go")
+		log.Println(" Protocol Converter service is not running")
+		log.Println("Please start the converter first:")
+		log.Println("  cd examples/triple_generic_demo/protocol_converter")
+		log.Println("  go run converter.go")
 		return
 	}
-	fmt.Println("✅ Protocol Converter service is running normally")
+	log.Println(" Protocol Converter service is running normally")
 
 	// Demo Scenario 1: Serialization format conversion
 	demonstrateSerializationConversion()
@@ -58,8 +59,8 @@ func main() {
 	// Demo Scenario 5: Performance testing
 	demonstratePerformanceTest()
 
-	fmt.Println("\n🎉 Protocol Converter demo completed!")
-	fmt.Println("For detailed documentation, please refer to: protocol_converter/README.md")
+	log.Println("\n Protocol Converter demo completed!")
+	log.Println("For detailed documentation, please refer to: protocol_converter/README.md")
 }
 
 // checkConverterService checks if the protocol converter service is running
@@ -101,8 +102,8 @@ func sendConvertRequest(request map[string]interface{}) (*ConvertResponse, error
 
 // demonstrateSerializationConversion demonstrates serialization format conversion
 func demonstrateSerializationConversion() {
-	fmt.Println("\n📊 Demo Scenario 1: Serialization Format Conversion")
-	fmt.Println("----------------------------------------")
+	log.Println("\n Demo Scenario 1: Serialization Format Conversion")
+	log.Println("")
 
 	scenarios := []struct {
 		name   string
@@ -113,7 +114,7 @@ func demonstrateSerializationConversion() {
 		args   []interface{}
 	}{
 		{
-			name:   "Hessian2 → JSON",
+			name:   "Hessian2 -> JSON",
 			source: "hessian2",
 			target: "json",
 			method: "Hello",
@@ -121,7 +122,7 @@ func demonstrateSerializationConversion() {
 			args:   []interface{}{"Format Conversion Test"},
 		},
 		{
-			name:   "JSON → Hessian2",
+			name:   "JSON -> Hessian2",
 			source: "json",
 			target: "hessian2",
 			method: "Add",
@@ -131,7 +132,7 @@ func demonstrateSerializationConversion() {
 	}
 
 	for _, scenario := range scenarios {
-		fmt.Printf("\n🔄 %s:\n", scenario.name)
+		log.Printf("\n %s:\n", scenario.name)
 
 		request := map[string]interface{}{
 			"source_protocol":      "triple",
@@ -145,23 +146,23 @@ func demonstrateSerializationConversion() {
 
 		resp, err := sendConvertRequest(request)
 		if err != nil {
-			fmt.Printf("  ❌ Request failed: %v\n", err)
+			log.Printf("   Request failed: %v\n", err)
 			continue
 		}
 
 		if resp.Success {
-			fmt.Printf("  ✅ Conversion successful, duration: %s\n", resp.Duration)
-			fmt.Printf("  📄 Result: %v\n", resp.Result)
+			log.Printf("   Conversion successful, duration: %s\n", resp.Duration)
+			log.Printf("  📄 Result: %v\n", resp.Result)
 		} else {
-			fmt.Printf("  ❌ Conversion failed: %s\n", resp.Error)
+			log.Printf("   Conversion failed: %s\n", resp.Error)
 		}
 	}
 }
 
 // demonstrateProtocolConversion demonstrates protocol conversion
 func demonstrateProtocolConversion() {
-	fmt.Println("\n🔄 Demo Scenario 2: Protocol Conversion")
-	fmt.Println("----------------------------------------")
+	log.Println("\n Demo Scenario 2: Protocol Conversion")
+	log.Println("")
 
 	scenarios := []struct {
 		name           string
@@ -173,7 +174,7 @@ func demonstrateProtocolConversion() {
 		description    string
 	}{
 		{
-			name:           "Triple → HTTP",
+			name:           "Triple -> HTTP",
 			sourceProtocol: "triple",
 			targetProtocol: "http",
 			method:         "GetUserInfo",
@@ -182,7 +183,7 @@ func demonstrateProtocolConversion() {
 			description:    "Convert RPC calls to HTTP REST calls",
 		},
 		{
-			name:           "Triple → gRPC",
+			name:           "Triple -> gRPC",
 			sourceProtocol: "triple",
 			targetProtocol: "grpc",
 			method:         "Hello",
@@ -193,8 +194,8 @@ func demonstrateProtocolConversion() {
 	}
 
 	for _, scenario := range scenarios {
-		fmt.Printf("\n🌉 %s:\n", scenario.name)
-		fmt.Printf("   %s\n", scenario.description)
+		log.Printf("\n %s:\n", scenario.name)
+		log.Printf("   %s\n", scenario.description)
 
 		request := map[string]interface{}{
 			"source_protocol":      scenario.sourceProtocol,
@@ -208,32 +209,32 @@ func demonstrateProtocolConversion() {
 
 		resp, err := sendConvertRequest(request)
 		if err != nil {
-			fmt.Printf("  ❌ Request failed: %v\n", err)
+			log.Printf("   Request failed: %v\n", err)
 			continue
 		}
 
 		if resp.Success {
-			fmt.Printf("  ✅ Protocol conversion successful, duration: %s\n", resp.Duration)
-			fmt.Printf("  📄 Result type: %T\n", resp.Result)
+			log.Printf("   Protocol conversion successful, duration: %s\n", resp.Duration)
+			log.Printf("  📄 Result type: %T\n", resp.Result)
 			if m, ok := resp.Result.(map[string]interface{}); ok {
 				for k, v := range m {
-					fmt.Printf("      %s: %v\n", k, v)
+					log.Printf("      %s: %v\n", k, v)
 				}
 			} else {
-				fmt.Printf("  📄 Result content: %v\n", resp.Result)
+				log.Printf("  📄 Result content: %v\n", resp.Result)
 			}
 		} else {
-			fmt.Printf("  ❌ Protocol conversion failed: %s\n", resp.Error)
+			log.Printf("   Protocol conversion failed: %s\n", resp.Error)
 		}
 	}
 }
 
 // demonstrateBatchConversion demonstrates batch conversion requests
 func demonstrateBatchConversion() {
-	fmt.Println("\n📦 Demo Scenario 3: Batch Conversion Requests")
-	fmt.Println("----------------------------------------")
+	log.Println("\n📦 Demo Scenario 3: Batch Conversion Requests")
+	log.Println("")
 
-	fmt.Println("Sending multiple different types of conversion requests simultaneously...")
+	log.Println("Sending multiple different types of conversion requests simultaneously...")
 
 	requests := []map[string]interface{}{
 		{
@@ -285,20 +286,20 @@ func demonstrateBatchConversion() {
 	// Collect results
 	for i := 0; i < len(requests); i++ {
 		result := <-results
-		fmt.Printf("  %s\n", result)
+		log.Printf("  %s\n", result)
 	}
 
 	totalTime := time.Since(start)
-	fmt.Printf("\n📊 Batch Request Completion Statistics:\n")
-	fmt.Printf("  Total requests: %d\n", len(requests))
-	fmt.Printf("  Total time: %v\n", totalTime)
-	fmt.Printf("  Average time: %v\n", totalTime/time.Duration(len(requests)))
+	log.Printf("\n Batch Request Completion Statistics:\n")
+	log.Printf("  Total requests: %d\n", len(requests))
+	log.Printf("  Total time: %v\n", totalTime)
+	log.Printf("  Average time: %v\n", totalTime/time.Duration(len(requests)))
 }
 
 // demonstrateBusinessScenarios demonstrates real business scenario simulation
 func demonstrateBusinessScenarios() {
-	fmt.Println("\n🏢 Demo Scenario 4: Real Business Scenario Simulation")
-	fmt.Println("----------------------------------------")
+	log.Println("\n🏢 Demo Scenario 4: Real Business Scenario Simulation")
+	log.Println("")
 
 	scenarios := []struct {
 		title       string
@@ -366,41 +367,41 @@ func demonstrateBusinessScenarios() {
 	}
 
 	for _, scenario := range scenarios {
-		fmt.Printf("\n🎯 %s:\n", scenario.title)
-		fmt.Printf("   Scenario: %s\n", scenario.description)
+		log.Printf("\n🎯 %s:\n", scenario.title)
+		log.Printf("   Scenario: %s\n", scenario.description)
 
 		start := time.Now()
 		resp, err := sendConvertRequest(scenario.request)
 		elapsed := time.Since(start)
 
 		if err != nil {
-			fmt.Printf("  ❌ Scenario execution failed: %v\n", err)
+			log.Printf("   Scenario execution failed: %v\n", err)
 			continue
 		}
 
 		if resp.Success {
-			fmt.Printf("  ✅ Scenario execution successful\n")
-			fmt.Printf("  ⏱️  Total time: %v (Converter internal: %s)\n", elapsed, resp.Duration)
-			fmt.Printf("  📊 Conversion path: %s(%s) → %s(%s)\n",
+			log.Printf("   Scenario execution successful\n")
+			log.Printf("    Total time: %v (Converter internal: %s)\n", elapsed, resp.Duration)
+			log.Printf("   Conversion path: %s(%s) -> %s(%s)\n",
 				resp.SourceProtocol, resp.SourceSerialization,
 				resp.TargetProtocol, resp.TargetSerialization)
 
 			// Only show result summary to avoid too long output
 			if resultMap, ok := resp.Result.(map[string]interface{}); ok {
-				fmt.Printf("  📄 Result summary: %d fields\n", len(resultMap))
+				log.Printf("  📄 Result summary: %d fields\n", len(resultMap))
 			} else {
-				fmt.Printf("  📄 Result type: %T\n", resp.Result)
+				log.Printf("  📄 Result type: %T\n", resp.Result)
 			}
 		} else {
-			fmt.Printf("  ❌ Scenario execution failed: %s\n", resp.Error)
+			log.Printf("   Scenario execution failed: %s\n", resp.Error)
 		}
 	}
 }
 
 // demonstratePerformanceTest demonstrates performance testing
 func demonstratePerformanceTest() {
-	fmt.Println("\n⚡ Demo Scenario 5: Performance Testing")
-	fmt.Println("----------------------------------------")
+	log.Println("\n⚡ Demo Scenario 5: Performance Testing")
+	log.Println("")
 
 	testRequest := map[string]interface{}{
 		"source_protocol":      "triple",
@@ -413,13 +414,13 @@ func demonstratePerformanceTest() {
 	}
 
 	// Warm-up phase
-	fmt.Println("🔥 Executing warm-up requests...")
+	log.Println("🔥 Executing warm-up requests...")
 	for i := 0; i < 5; i++ {
 		sendConvertRequest(testRequest)
 	}
 
 	// Performance test
-	fmt.Println("\n📊 Starting performance test (50 requests)...")
+	log.Println("\n Starting performance test (50 requests)...")
 
 	const numRequests = 50
 	results := make([]time.Duration, 0, numRequests)
@@ -439,7 +440,7 @@ func demonstratePerformanceTest() {
 		}
 
 		if i%10 == 9 { // Show progress every 10 requests
-			fmt.Printf("  Completed %d/%d requests...\n", i+1, numRequests)
+			log.Printf("  Completed %d/%d requests...\n", i+1, numRequests)
 		}
 	}
 
@@ -463,24 +464,24 @@ func demonstratePerformanceTest() {
 	avgTime := totalTime / time.Duration(len(results))
 	throughput := float64(numRequests) / overallTime.Seconds()
 
-	fmt.Printf("\n📈 Performance Test Results:\n")
-	fmt.Printf("  Total requests: %d\n", numRequests)
-	fmt.Printf("  Successful requests: %d (Success rate: %.1f%%)\n", successCount,
+	log.Printf("\n📈 Performance Test Results:\n")
+	log.Printf("  Total requests: %d\n", numRequests)
+	log.Printf("  Successful requests: %d (Success rate: %.1f%%)\n", successCount,
 		float64(successCount)/float64(numRequests)*100)
-	fmt.Printf("  Total time: %v\n", overallTime)
-	fmt.Printf("  Average latency: %v\n", avgTime)
-	fmt.Printf("  Minimum latency: %v\n", minTime)
-	fmt.Printf("  Maximum latency: %v\n", maxTime)
-	fmt.Printf("  Throughput: %.2f requests/sec\n", throughput)
+	log.Printf("  Total time: %v\n", overallTime)
+	log.Printf("  Average latency: %v\n", avgTime)
+	log.Printf("  Minimum latency: %v\n", minTime)
+	log.Printf("  Maximum latency: %v\n", maxTime)
+	log.Printf("  Throughput: %.2f requests/sec\n", throughput)
 
 	// Performance rating
 	if avgTime < 50*time.Millisecond {
-		fmt.Printf("  🏆 Performance rating: Excellent\n")
+		log.Printf("  🏆 Performance rating: Excellent\n")
 	} else if avgTime < 100*time.Millisecond {
-		fmt.Printf("  👍 Performance rating: Good\n")
+		log.Printf("  👍 Performance rating: Good\n")
 	} else if avgTime < 200*time.Millisecond {
-		fmt.Printf("  👌 Performance rating: Fair\n")
+		log.Printf("  👌 Performance rating: Fair\n")
 	} else {
-		fmt.Printf("  ⚠️  Performance rating: Needs optimization\n")
+		log.Printf("  ⚠️  Performance rating: Needs optimization\n")
 	}
 }

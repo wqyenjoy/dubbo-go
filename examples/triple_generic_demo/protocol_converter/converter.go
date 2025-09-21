@@ -400,7 +400,7 @@ func (pg *ProtocolGateway) handleHealth(w http.ResponseWriter, r *http.Request) 
 
 // Start starts the protocol gateway server
 func (pg *ProtocolGateway) Start() error {
-	fmt.Printf("🌉 Protocol Gateway starting on %s\n", pg.server.Addr)
+	log.Printf("Protocol Gateway starting on %s", pg.server.Addr)
 	return pg.server.ListenAndServe()
 }
 
@@ -416,17 +416,16 @@ func main() {
 		gatewayPort = 8080
 	)
 
-	fmt.Println("=== Protocol Converter Demo ===")
+	log.Println("Protocol Converter Demo")
 
 	// Create protocol converter
 	converter, err := NewProtocolConverter(providerURL, serviceName)
 	if err != nil {
 		log.Fatalf("Failed to create converter: %v", err)
 	}
-	fmt.Println("✅ Protocol converter initialized")
+	log.Println("Protocol converter initialized")
 
-	// Demo: Different protocol conversion scenarios
-	fmt.Println("\n=== Protocol Conversion Examples ===")
+	log.Println("Protocol Conversion Examples")
 
 	// Example 1: Triple Hessian2 to Triple JSON
 	req1 := &ConvertRequest{
@@ -440,12 +439,11 @@ func main() {
 	}
 
 	resp1 := converter.Convert(req1)
-	fmt.Printf("✅ Example 1 - Triple Hessian2 → Triple JSON:\n")
-	fmt.Printf("   Success: %v, Duration: %s\n", resp1.Success, resp1.Duration)
+	log.Printf("Example 1 - Triple Hessian2 to Triple JSON: Success=%v, Duration=%s", resp1.Success, resp1.Duration)
 	if resp1.Success {
-		fmt.Printf("   Result: %v\n", resp1.Result)
+		log.Printf("Result: %v", resp1.Result)
 	} else {
-		fmt.Printf("   Error: %s\n", resp1.Error)
+		log.Printf("Error: %s", resp1.Error)
 	}
 
 	// Example 2: Triple to HTTP conversion
@@ -460,12 +458,11 @@ func main() {
 	}
 
 	resp2 := converter.Convert(req2)
-	fmt.Printf("\n✅ Example 2 - Triple → HTTP REST:\n")
-	fmt.Printf("   Success: %v, Duration: %s\n", resp2.Success, resp2.Duration)
+	log.Printf("Example 2 - Triple to HTTP REST: Success=%v, Duration=%s", resp2.Success, resp2.Duration)
 	if resp2.Success {
-		fmt.Printf("   Result: %v\n", resp2.Result)
+		log.Printf("Result: %v", resp2.Result)
 	} else {
-		fmt.Printf("   Error: %s\n", resp2.Error)
+		log.Printf("Error: %s", resp2.Error)
 	}
 
 	// Example 3: Different serialization conversion
@@ -480,35 +477,20 @@ func main() {
 	}
 
 	resp3 := converter.Convert(req3)
-	fmt.Printf("\n✅ Example 3 - Serialization Conversion (JSON → Hessian2):\n")
-	fmt.Printf("   Success: %v, Duration: %s\n", resp3.Success, resp3.Duration)
+	log.Printf("Example 3 - JSON to Hessian2: Success=%v, Duration=%s", resp3.Success, resp3.Duration)
 	if resp3.Success {
-		fmt.Printf("   Result: %v\n", resp3.Result)
+		log.Printf("Result: %v", resp3.Result)
 	} else {
-		fmt.Printf("   Error: %s\n", resp3.Error)
+		log.Printf("Error: %s", resp3.Error)
 	}
 
-	// Start Protocol Gateway
-	fmt.Printf("\n=== Starting Protocol Gateway ===\n")
+	log.Println("Starting Protocol Gateway")
 	gateway := NewProtocolGateway(converter, gatewayPort)
 
-	fmt.Println("🌐 Protocol Gateway provides HTTP API for protocol conversion:")
-	fmt.Printf("   POST http://localhost:%d/convert - Convert protocols\n", gatewayPort)
-	fmt.Printf("   GET  http://localhost:%d/health  - Health check\n", gatewayPort)
-	fmt.Println("\n📝 Example curl command:")
-	fmt.Printf(`curl -X POST http://localhost:%d/convert \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_protocol": "triple",
-    "target_protocol": "triple", 
-    "source_serialization": "hessian2",
-    "target_serialization": "json",
-    "method_name": "Hello",
-    "param_types": ["java.lang.String"],
-    "args": ["World"]
-  }'`, gatewayPort)
-
-	fmt.Println("\n\n🚀 Gateway starting... (Ctrl+C to stop)")
+	log.Printf("Protocol Gateway HTTP API:")
+	log.Printf("  POST http://localhost:%d/convert - Convert protocols", gatewayPort)
+	log.Printf("  GET  http://localhost:%d/health  - Health check", gatewayPort)
+	log.Println("Gateway starting (Ctrl+C to stop)")
 	if err := gateway.Start(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Gateway failed: %v", err)
 	}
