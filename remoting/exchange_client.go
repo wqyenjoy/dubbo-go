@@ -119,15 +119,15 @@ func (client *ExchangeClient) Request(invocation *base.Invocation, url *common.U
 	if er := client.doInit(url); er != nil {
 		return er
 	}
-	
+
 	// Issue #1868 Fix: Pre-check connection health before sending request
 	// This prevents using stale connections that may cause i/o timeout
 	if !client.IsAvailable() {
 		logger.Warnf("Connection not available for %s, attempting to reconnect", client.address)
-		
+
 		// Close stale connection
 		client.Close()
-		
+
 		// Re-initialize connection
 		if err := client.doInit(url); err != nil {
 			res.Err = err
@@ -218,12 +218,12 @@ func (client *ExchangeClient) IsAvailable() bool {
 	if !client.init {
 		return false
 	}
-	
+
 	// Basic availability check
 	if !client.client.IsAvailable() {
 		return false
 	}
-	
+
 	// Enhanced health check for connection validity
 	return client.healthCheck()
 }
@@ -232,16 +232,16 @@ func (client *ExchangeClient) IsAvailable() bool {
 func (client *ExchangeClient) healthCheck() bool {
 	// Create a lightweight ping request
 	request := NewRequest("2.0.2")
-	request.Event = true     // Mark as event (heartbeat)
-	request.TwoWay = false   // One-way, no response needed
+	request.Event = true   // Mark as event (heartbeat)
+	request.TwoWay = false // One-way, no response needed
 	request.Data = "ping"
-	
+
 	// Short timeout health check (1 second)
 	err := client.client.Request(request, 1*time.Second, nil)
 	if err != nil {
 		logger.Debugf("Health check failed for %s: %v", client.address, err)
 		return false
 	}
-	
+
 	return true
 }

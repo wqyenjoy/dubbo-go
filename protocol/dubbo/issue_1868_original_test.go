@@ -21,12 +21,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+)
 
+import (
+	"github.com/stretchr/testify/assert"
+)
+
+import (
 	"dubbo.apache.org/dubbo-go/v3/common"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config"
 	"dubbo.apache.org/dubbo-go/v3/remoting/getty"
-	"github.com/stretchr/testify/assert"
 )
 
 // TestIssue1868OriginalReproduction reproduces the problem according to the original Issue description

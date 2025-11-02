@@ -24,13 +24,18 @@ import (
 	"sync"
 	"testing"
 	"time"
+)
 
+import (
 	hessian "github.com/apache/dubbo-go-hessian2"
 
-	"dubbo.apache.org/dubbo-go/v3/common"
 	perrors "github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
 
+	"github.com/stretchr/testify/assert"
+)
+
+import (
+	"dubbo.apache.org/dubbo-go/v3/common"
 	. "dubbo.apache.org/dubbo-go/v3/common/constant"
 	"dubbo.apache.org/dubbo-go/v3/config"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
@@ -331,12 +336,12 @@ func TestTimeoutAdjustmentLogic(t *testing.T) {
 // TestExchangeClientHealthCheck tests the persistent fix for connection health checking
 func TestExchangeClientHealthCheck(t *testing.T) {
 	t.Log("Testing ExchangeClient health check mechanism for Issue #1868 persistent fix")
-	
+
 	// This test verifies that stale connections are properly detected and handled
 	// which is the root cause fix for the i/o timeout issue
-	
+
 	// Connection health check is implemented in remoting/exchange_client.go
-	
+
 	t.Log("✅ Connection health check mechanism is the persistent solution")
 	t.Log("✅ This prevents reusing stale connections that cause i/o timeout")
 	t.Log("✅ Combined with connection pool cleanup, this provides robust connection management")
@@ -345,7 +350,7 @@ func TestExchangeClientHealthCheck(t *testing.T) {
 // TestConnectionPoolHealthManagement tests connection pool health management
 func TestConnectionPoolHealthManagement(t *testing.T) {
 	t.Log("Testing connection pool health management for Issue #1868")
-	
+
 	testCases := []struct {
 		name        string
 		description string
@@ -355,7 +360,7 @@ func TestConnectionPoolHealthManagement(t *testing.T) {
 			description: "Detect and remove stale connections from pool",
 		},
 		{
-			name:        "HealthCheckBeforeReuse", 
+			name:        "HealthCheckBeforeReuse",
 			description: "Perform health check before reusing pooled connections",
 		},
 		{
@@ -363,7 +368,7 @@ func TestConnectionPoolHealthManagement(t *testing.T) {
 			description: "Automatically reconnect when stale connection detected",
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Logf("Testing: %s", tc.description)

@@ -34,7 +34,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/triple/triple_protocol/internal/proto/connectext/grpc/status/v1"
 )
 
-	// "github.com/dubbogo/gost/log/logger"
+// "github.com/dubbogo/gost/log/logger"
 // protocol specification headers
 const (
 	grpcHeaderCompression       = "Grpc-Encoding"
